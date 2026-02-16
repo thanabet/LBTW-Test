@@ -11,10 +11,8 @@ export class HudEngine {
     this.state = {};
     this.dialogueLang = "th";
 
-    // ✅ อ้างอิง STAGE (ระบบสเกล/ครอปเดียวกับ template)
     this.stageEl = document.getElementById("stage");
 
-    // ===== existing elements =====
     this.monthEl = el("div");
     this.dayEl = el("div");
     this.statusEl = el("div");
@@ -25,7 +23,7 @@ export class HudEngine {
     this.hourHand = el("div");
     this.minHand = el("div");
 
-    // ===== NEW: portrait =====
+    // portrait
     this.portraitEl = el("img");
     this.portraitEl.style.position = "absolute";
     this.portraitEl.style.objectFit = "contain";
@@ -33,7 +31,6 @@ export class HudEngine {
     this.portraitEl.style.pointerEvents = "auto";
     this.portraitEl.style.cursor = "pointer";
 
-    // append (keep existing order, just add portrait)
     this.root.append(
       this.monthEl, this.dayEl,
       this.statusEl, this.moodEl,
@@ -69,7 +66,6 @@ export class HudEngine {
     this.inRoomWrap.style.display = "flex";
     this.inRoomWrap.style.gap = "0.5rem";
 
-    // default portrait (optional)
     this.setPortrait("normal");
   }
 
@@ -103,12 +99,10 @@ export class HudEngine {
     this._applyRectPx(this.moodEl,   L.moodText);
     this._applyRectPx(this.dialogueEl, L.dialogue);
 
-    // ✅ NEW: portrait layout (ถ้า layout มี)
     if (L.portrait) {
       this._applyRectPx(this.portraitEl, L.portrait);
     }
 
-    // in-room anchor
     const slots = L.inRoom.slots;
     if(slots?.length){
       const first = slots[0];
@@ -117,7 +111,6 @@ export class HudEngine {
       this.inRoomWrap.style.top  = ((first.y/100) * r.height) + "px";
     }
 
-    // clock hands
     const c = L.clock.center;
     const r = this._stageRect();
     const cx = (c.x/100) * r.width;
@@ -150,9 +143,7 @@ export class HudEngine {
     this.minHand.style.transform  = `rotate(${minDeg}deg)`;
   }
 
-  // ✅ NEW: portrait setter (ไม่ทำ idle ยัง)
   setPortrait(emotion){
-    // expected path: assets/portrait/<emotion>.png
     this.portraitEl.src = `assets/portrait/${emotion}.png`;
   }
 
@@ -164,7 +155,6 @@ export class HudEngine {
     const dlg = this.state.dialogue || {};
     this.dialogueEl.textContent = dlg[this.dialogueLang] || "";
 
-    // ✅ NEW: apply portrait only if emotion provided
     if (this.state.emotion) {
       this.setPortrait(this.state.emotion);
     }
@@ -181,6 +171,7 @@ export class HudEngine {
     this.setState(this.state);
   }
 
+  // 🔥 เปลี่ยนจาก div -> img card (แก้เฉพาะส่วนนี้)
   _renderInRoom(list){
     this.inRoomWrap.innerHTML = "";
     const slots = this.layout.inRoom.slots;
@@ -188,20 +179,18 @@ export class HudEngine {
 
     list.slice(0, slots.length).forEach((id,i)=>{
       const s = slots[i];
+
       const w = (s.w/100) * r.width;
       const h = (s.h/100) * r.height;
 
-      const card = el("div");
-      card.textContent = id.toUpperCase();
+      const card = el("img");
+      card.src = `assets/characters/${id}.png`;
       card.style.width = w + "px";
       card.style.height = h + "px";
-      card.style.display = "flex";
-      card.style.alignItems = "center";
-      card.style.justifyContent = "center";
-      card.style.background = "rgba(0,0,0,0.08)";
-      card.style.borderRadius = "10px";
-      card.style.fontWeight = "800";
-      card.style.color = "#2a2a2a";
+      card.style.objectFit = "contain";
+      card.style.borderRadius = "8px";
+      card.style.userSelect = "none";
+
       this.inRoomWrap.appendChild(card);
     });
   }
