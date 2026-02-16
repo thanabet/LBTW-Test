@@ -14,7 +14,7 @@
   },
 
   "statusText": { "x": 45, "y": 60.2, "w": 40, "h": 3.5, "align": "center" },
-  "moodText":   { "x": 49.8, "y": 64, "w": 40, "h": 3.5, "align": "center" },
+  "moodText":   { "x": 49, "y": 64.8, "w": 40, "h": 3.5, "align": "center" },
 
   "dialogue": {
     "x": 12, "y": 78.3, "w": 76, "h": 12,
@@ -29,6 +29,7 @@
     ]
   }
 }
+
 
 
 
