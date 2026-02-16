@@ -1,0 +1,53 @@
+:root{
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #000;
+  overscroll-behavior: none;
+}
+
+#app{
+  position: relative;
+  width: 100vw;
+  height: 100dvh; /* กัน Safari */
+  overflow: hidden;
+  touch-action: manipulation;
+}
+
+#template{
+  position: absolute;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  object-fit: cover;       /* ซ้ายขวาชิด, บนล่างขาดได้ */
+  object-position: center top;
+  z-index: 1;
+  user-select: none;
+  pointer-events: none;
+}
+
+#scene-host{
+  position: absolute;
+  inset: 0;
+  z-index: 2; /* อยู่เหนือ template */
+  pointer-events: none; /* กันไปบังการกด HUD */
+}
+
+#overlay{
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  /* overlay ต้องกดได้ */
+  pointer-events: auto;
+  font-family: ui-monospace, Menlo, Monaco, "Courier New", monospace;
+}
+
+/* ตัวช่วย debug เปิด/ปิดได้ในโค้ด */
+.debug-box{
+  outline: 2px dashed rgba(255,255,255,0.25);
+}

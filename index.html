@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Light Behind the Window</title>
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- PixiJS CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/pixi.js@8/dist/pixi.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- Full template image (ทั้งรูป) -->
+    <img id="template" alt="HUD Template" src="assets/template/hud_template.png" />
+
+    <!-- Pixi canvas is injected here -->
+    <div id="scene-host"></div>
+
+    <!-- Overlay layer for HUD text/icons/hands/cards -->
+    <div id="overlay"></div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
