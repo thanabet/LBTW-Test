@@ -2,7 +2,7 @@
   "templateSize": { "w": 1595, "h": 3457 },
 
   "calendar": {
-    "month": { "x": 87, "y": 51.5, "w": 8, "h": 3.2, "align": "center" },
+    "month": { "x": 87, "y": 52, "w": 8, "h": 3.2, "align": "center" },
     "day":   { "x": 87, "y": 55, "w": 8, "h": 5.0, "align": "center" }
   },
 
@@ -29,5 +29,6 @@
     ]
   }
 }
+
 
 
