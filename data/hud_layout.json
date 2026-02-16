@@ -1,5 +1,8 @@
+
 {
   "templateSize": { "w": 1595, "h": 3457 },
+
+  "portrait": { "x": 14, "y": 57.5, "w": 22, "h": 22 },
 
   "calendar": {
     "month": { "x": 86, "y": 52, "w": 8, "h": 3.2, "align": "center" },
@@ -12,8 +15,6 @@
     "minLenPctOfScreenW": 3.8,
     "thicknessPx": 3
   },
-
-  "portrait": { "x": 14, "y": 66.5, "w": 22, "h": 22 }
 
   "statusText": { "x": 45, "y": 60.2, "w": 40, "h": 3.5, "align": "center" },
   "moodText":   { "x": 49, "y": 64.8, "w": 40, "h": 3.5, "align": "center" },
@@ -31,15 +32,6 @@
     ]
   }
 }
-
-
-
-
-
-
-
-
-
 
 
 
