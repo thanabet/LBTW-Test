@@ -5,7 +5,6 @@
     {
       "time": "06:30",
       "state": {
-"emotion": "normal"
         "status": "STATUS : WAKE UP",
         "mood": "MOOD : SLEEPY",
         "dialogue": { "th": "เช้านี้อากาศดี…", "en": "Nice morning..." },
@@ -15,7 +14,6 @@
     {
       "time": "18:10",
       "state": {
-"emotion": "normal"
         "status": "STATUS : READING",
         "mood": "MOOD : FOCUSED",
         "dialogue": { "th": "พรุ่งนี้ต้องอ่านให้จบ…", "en": "I must finish it..." },
