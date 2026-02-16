@@ -68,7 +68,26 @@ export class HudEngine {
         const y = ev.clientY - r.top;
         const xp = (x / r.width) * 100;
         const yp = (y / r.height) * 100;
-        console.log(`[PICK] x:${xp.toFixed(2)}% y:${yp.toFixed(2)}%`);
+       const msg = `[PICK] x:${xp.toFixed(2)}% y:${yp.toFixed(2)}%`;
+console.log(msg);
+
+let badge = document.getElementById("pick-badge");
+if(!badge){
+  badge = document.createElement("div");
+  badge.id = "pick-badge";
+  badge.style.position = "fixed";
+  badge.style.left = "12px";
+  badge.style.top = "12px";
+  badge.style.zIndex = "999999";
+  badge.style.background = "rgba(0,0,0,0.75)";
+  badge.style.color = "#fff";
+  badge.style.padding = "8px 10px";
+  badge.style.borderRadius = "10px";
+  badge.style.font = "12px ui-monospace, Menlo, Monaco, monospace";
+  document.body.appendChild(badge);
+}
+badge.textContent = msg;
+
       });
     }
   }
@@ -190,3 +209,4 @@ export class HudEngine {
     });
   }
 }
+
