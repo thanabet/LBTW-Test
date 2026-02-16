@@ -14,6 +14,7 @@ export class HudEngine {
     // ✅ อ้างอิง STAGE (ระบบสเกล/ครอปเดียวกับ template)
     this.stageEl = document.getElementById("stage");
 
+    // ===== existing elements =====
     this.monthEl = el("div");
     this.dayEl = el("div");
     this.statusEl = el("div");
@@ -21,22 +22,25 @@ export class HudEngine {
     this.dialogueEl = el("div");
     this.inRoomWrap = el("div");
 
-this.portraitEl = el("img");
-this.portraitEl.style.position = "absolute";
-this.portraitEl.style.objectFit = "contain";
-this.portraitEl.style.pointerEvents = "auto";
-this.portraitEl.style.cursor = "pointer";
-
     this.hourHand = el("div");
     this.minHand = el("div");
 
+    // ===== NEW: portrait =====
+    this.portraitEl = el("img");
+    this.portraitEl.style.position = "absolute";
+    this.portraitEl.style.objectFit = "contain";
+    this.portraitEl.style.userSelect = "none";
+    this.portraitEl.style.pointerEvents = "auto";
+    this.portraitEl.style.cursor = "pointer";
+
+    // append (keep existing order, just add portrait)
     this.root.append(
       this.monthEl, this.dayEl,
       this.statusEl, this.moodEl,
       this.dialogueEl,
       this.inRoomWrap,
-this.portraitEl,
-      this.hourHand, this.minHand
+      this.hourHand, this.minHand,
+      this.portraitEl
     );
 
     for(const e of [this.monthEl,this.dayEl,this.statusEl,this.moodEl,this.dialogueEl]){
@@ -64,6 +68,9 @@ this.portraitEl,
     this.inRoomWrap.style.position = "absolute";
     this.inRoomWrap.style.display = "flex";
     this.inRoomWrap.style.gap = "0.5rem";
+
+    // default portrait (optional)
+    this.setPortrait("normal");
   }
 
   resize(){
@@ -95,8 +102,11 @@ this.portraitEl,
     this._applyRectPx(this.statusEl, L.statusText);
     this._applyRectPx(this.moodEl,   L.moodText);
     this._applyRectPx(this.dialogueEl, L.dialogue);
-this._applyRectPx(this.portraitEl, L.portrait);
 
+    // ✅ NEW: portrait layout (ถ้า layout มี)
+    if (L.portrait) {
+      this._applyRectPx(this.portraitEl, L.portrait);
+    }
 
     // in-room anchor
     const slots = L.inRoom.slots;
@@ -140,6 +150,12 @@ this._applyRectPx(this.portraitEl, L.portrait);
     this.minHand.style.transform  = `rotate(${minDeg}deg)`;
   }
 
+  // ✅ NEW: portrait setter (ไม่ทำ idle ยัง)
+  setPortrait(emotion){
+    // expected path: assets/portrait/<emotion>.png
+    this.portraitEl.src = `assets/portrait/${emotion}.png`;
+  }
+
   setState(state){
     this.state = state || {};
     this.statusEl.textContent = this.state.status || "";
@@ -148,18 +164,13 @@ this._applyRectPx(this.portraitEl, L.portrait);
     const dlg = this.state.dialogue || {};
     this.dialogueEl.textContent = dlg[this.dialogueLang] || "";
 
-if (state.emotion) {
-  this.setPortrait(state.emotion);
-}
+    // ✅ NEW: apply portrait only if emotion provided
+    if (this.state.emotion) {
+      this.setPortrait(this.state.emotion);
+    }
 
     this._renderInRoom(this.state.inRoom || []);
   }
-
-setPortrait(emotion){
-  // แบบ simple ก่อน
-  this.portraitEl.src = `assets/portrait/${emotion}.png`;
-}
-
 
   enableDialogueToggle(cb){
     this.dialogueEl.onclick = cb;
