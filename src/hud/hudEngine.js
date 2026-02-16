@@ -21,6 +21,12 @@ export class HudEngine {
     this.dialogueEl = el("div");
     this.inRoomWrap = el("div");
 
+this.portraitEl = el("img");
+this.portraitEl.style.position = "absolute";
+this.portraitEl.style.objectFit = "contain";
+this.portraitEl.style.pointerEvents = "auto";
+this.portraitEl.style.cursor = "pointer";
+
     this.hourHand = el("div");
     this.minHand = el("div");
 
@@ -29,6 +35,7 @@ export class HudEngine {
       this.statusEl, this.moodEl,
       this.dialogueEl,
       this.inRoomWrap,
+this.portraitEl,
       this.hourHand, this.minHand
     );
 
@@ -88,6 +95,8 @@ export class HudEngine {
     this._applyRectPx(this.statusEl, L.statusText);
     this._applyRectPx(this.moodEl,   L.moodText);
     this._applyRectPx(this.dialogueEl, L.dialogue);
+this._applyRectPx(this.portraitEl, L.portrait);
+
 
     // in-room anchor
     const slots = L.inRoom.slots;
@@ -139,8 +148,18 @@ export class HudEngine {
     const dlg = this.state.dialogue || {};
     this.dialogueEl.textContent = dlg[this.dialogueLang] || "";
 
+if (state.emotion) {
+  this.setPortrait(state.emotion);
+}
+
     this._renderInRoom(this.state.inRoom || []);
   }
+
+setPortrait(emotion){
+  // แบบ simple ก่อน
+  this.portraitEl.src = `assets/portrait/${emotion}.png`;
+}
+
 
   enableDialogueToggle(cb){
     this.dialogueEl.onclick = cb;
