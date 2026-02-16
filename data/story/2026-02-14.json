@@ -8,7 +8,7 @@
         "status": "STATUS : WAKE UP",
         "mood": "MOOD : SLEEPY",
         "dialogue": { "th": "เช้านี้อากาศดี…", "en": "Nice morning..." },
-        "inRoom": ["army"]
+        "inRoom": ["army", "fai"]
       }
     },
     {
