@@ -6,17 +6,13 @@ const TEMPLATE_W = 1595;
 const TEMPLATE_H = 3457;
 const RATIO = TEMPLATE_H / TEMPLATE_W; // ~2.167
 
-// ✅ ปรับค่าเดียวนี้เพื่อ “เลื่อน template ลง/ขึ้น”
-// + = เลื่อนลง (เพิ่มพื้นที่ท้องฟ้า/ครึ่งบนยาวขึ้น)
-// - = เลื่อนขึ้น (โชว์ in-room มากขึ้น)
-const STAGE_Y_OFFSET_PX = 120;
-
 async function loadJSON(url){
   const res = await fetch(url, { cache: "no-store" });
   if(!res.ok) throw new Error(`Failed to load ${url}`);
   return await res.json();
 }
 
+/** ✅ แก้ iOS/LINE bar: ใช้ visualViewport */
 function setVisualViewportHeight(){
   const vv = window.visualViewport;
   const h = vv ? vv.height : window.innerHeight;
@@ -24,9 +20,10 @@ function setVisualViewportHeight(){
 }
 
 /**
- * ✅ จัด stage แบบ “กึ่งกลาง” แล้วค่อย offset ตามใจพี่มี่
- * - base: center (ทำให้รู้สึกใกล้ 50/50)
- * - offset: ปรับ framing ตามต้องการ
+ * ✅ คำนวณ stage ตาม ratio จริง
+ * - stage width = 100vw
+ * - stage height = vw * ratio
+ * - stage-y = จัดให้ “เห็นด้านล่าง (IN THE ROOM)” มากที่สุด = align bottom
  */
 function setStageByRatio(){
   const vw = window.innerWidth;
@@ -35,18 +32,8 @@ function setStageByRatio(){
   const stageH = vw * RATIO;
   document.documentElement.style.setProperty("--stage-h", `${stageH}px`);
 
-  // base = center
-  let y = (vh - stageH) / 2;
-
-  // apply offset
-  y += STAGE_Y_OFFSET_PX;
-
-  // clamp ไม่ให้เลื่อนจนเห็นขอบว่าง
-  // top limit: ไม่ให้ขอบบนลงมาจนเห็นพื้นหลัง
-  y = Math.min(0, y);
-  // bottom limit: ไม่ให้ขอบล่างยกขึ้นจนเห็นพื้นหลัง
-  y = Math.max(vh - stageH, y);
-
+  // align bottom (โชว์ IN THE ROOM ให้มากที่สุด)
+  const y = Math.min(0, vh - stageH);
   document.documentElement.style.setProperty("--stage-y", `${y}px`);
 }
 
@@ -54,18 +41,23 @@ async function boot(){
   setVisualViewportHeight();
   setStageByRatio();
 
-  const reflow = () => {
+  if(window.visualViewport){
+    window.visualViewport.addEventListener("resize", () => {
+      setVisualViewportHeight();
+      setStageByRatio();
+      reflow();
+    });
+    window.visualViewport.addEventListener("scroll", () => {
+      setVisualViewportHeight();
+      setStageByRatio();
+      reflow();
+    });
+  }
+  window.addEventListener("resize", () => {
     setVisualViewportHeight();
     setStageByRatio();
-    scene.resize();
-    hud.resize();
-  };
-
-  if(window.visualViewport){
-    window.visualViewport.addEventListener("resize", reflow);
-    window.visualViewport.addEventListener("scroll", reflow);
-  }
-  window.addEventListener("resize", reflow);
+    reflow();
+  });
 
   const sceneLayout = await loadJSON("./data/scene_layout.json");
   const hudLayout = await loadJSON("./data/hud_layout.json");
@@ -112,9 +104,12 @@ async function boot(){
   }
   tick();
 
-  // first layout
-  scene.resize();
-  hud.resize();
+  function reflow(){
+    scene.resize();
+    hud.resize();
+  }
+
+  reflow();
 }
 
 boot().catch(err => {
