@@ -1,19 +1,20 @@
 :root{
-  --safe-top: env(safe-area-inset-top);
-  --safe-bottom: env(safe-area-inset-bottom);
-
-  /* ✅ ปรับค่านี้เพื่อดัน template ขึ้นให้พ้นแถบล่าง */
-  --template-shift-y: -9vh;
-
-  /* ✅ จะถูก set จาก JS ให้เท่าความสูงจริงของจอที่มองเห็นได้ */
+  /* ความสูงจอที่ “มองเห็นจริง” */
   --vvh: 1vh;
+
+  /* ขนาด stage ที่ JS จะ set ให้ */
+  --stage-h: 100vh;
+  --stage-y: 0px;
+
+  /* สีพื้นหลังกันเห็นขอบ */
+  --bg: #c8c2ac;
 }
 
-html, body {
+html, body{
   margin: 0;
   padding: 0;
   height: 100%;
-  background: #c8c2ac; /* กันเห็นขอบดำ */
+  background: var(--bg);
   overflow: hidden;
 }
 
@@ -21,26 +22,29 @@ html, body {
   position: fixed;
   inset: 0;
   width: 100vw;
-
-  /* ✅ ใช้ความสูงจริงของ viewport (แก้ LINE/Safari bar บัง) */
   height: calc(var(--vvh) * 100);
-
+  background: var(--bg);
   overflow: hidden;
-  touch-action: manipulation;
 }
 
+/* ✅ Stage เป็น “โลกจริง” ของ template+overlay+scene */
+#stage{
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: var(--stage-h);
+  transform: translateY(var(--stage-y));
+  will-change: transform;
+}
+
+/* ✅ template ไม่ใช้ cover แล้ว: ให้เต็ม stage 100% แบบ 1:1 */
 #template{
   position: absolute;
   inset: 0;
-  width: 100vw;
+  width: 100%;
   height: 100%;
-
-  object-fit: cover;
-  object-position: center top;
-
-  /* ✅ ดัน template ขึ้น */
-  transform: translateY(var(--template-shift-y));
-
+  object-fit: fill; /* เพราะ stage ถูกคำนวณตาม ratio แล้ว */
   z-index: 1;
   user-select: none;
   pointer-events: none;

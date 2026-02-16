@@ -2,30 +2,62 @@ import { SceneEngine } from "./scene/sceneEngine.js";
 import { HudEngine } from "./hud/hudEngine.js";
 import { StoryEngine } from "./story/storyEngine.js";
 
+const TEMPLATE_W = 1595;
+const TEMPLATE_H = 3457;
+const RATIO = TEMPLATE_H / TEMPLATE_W; // ~2.167
+
 async function loadJSON(url){
   const res = await fetch(url, { cache: "no-store" });
   if(!res.ok) throw new Error(`Failed to load ${url}`);
   return await res.json();
 }
 
-/**
- * ✅ Fix: iOS/LINE in-app browser bar
- * ใช้ visualViewport.height เพื่อให้เต็ม "พื้นที่ที่มองเห็นได้จริง"
- */
+/** ✅ แก้ iOS/LINE bar: ใช้ visualViewport */
 function setVisualViewportHeight(){
   const vv = window.visualViewport;
   const h = vv ? vv.height : window.innerHeight;
   document.documentElement.style.setProperty("--vvh", `${h * 0.01}px`);
 }
 
+/**
+ * ✅ คำนวณ stage ตาม ratio จริง
+ * - stage width = 100vw
+ * - stage height = vw * ratio
+ * - stage-y = จัดให้ “เห็นด้านล่าง (IN THE ROOM)” มากที่สุด = align bottom
+ */
+function setStageByRatio(){
+  const vw = window.innerWidth;
+  const vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+
+  const stageH = vw * RATIO;
+  document.documentElement.style.setProperty("--stage-h", `${stageH}px`);
+
+  // align bottom (โชว์ IN THE ROOM ให้มากที่สุด)
+  const y = Math.min(0, vh - stageH);
+  document.documentElement.style.setProperty("--stage-y", `${y}px`);
+}
+
 async function boot(){
-  // set vv height now + listen changes (bar show/hide)
   setVisualViewportHeight();
+  setStageByRatio();
+
   if(window.visualViewport){
-    window.visualViewport.addEventListener("resize", setVisualViewportHeight);
-    window.visualViewport.addEventListener("scroll", setVisualViewportHeight);
+    window.visualViewport.addEventListener("resize", () => {
+      setVisualViewportHeight();
+      setStageByRatio();
+      reflow();
+    });
+    window.visualViewport.addEventListener("scroll", () => {
+      setVisualViewportHeight();
+      setStageByRatio();
+      reflow();
+    });
   }
-  window.addEventListener("resize", setVisualViewportHeight);
+  window.addEventListener("resize", () => {
+    setVisualViewportHeight();
+    setStageByRatio();
+    reflow();
+  });
 
   const sceneLayout = await loadJSON("./data/scene_layout.json");
   const hudLayout = await loadJSON("./data/hud_layout.json");
@@ -72,21 +104,12 @@ async function boot(){
   }
   tick();
 
-  // ✅ รีคำนวณตำแหน่งทุกครั้งที่ viewport เปลี่ยน (รวมตอนแถบล่างโชว์/หาย)
-  const reflow = () => {
-    setVisualViewportHeight();
+  function reflow(){
     scene.resize();
     hud.resize();
-  };
-
-  window.addEventListener("resize", reflow);
-  if(window.visualViewport){
-    window.visualViewport.addEventListener("resize", reflow);
-    window.visualViewport.addEventListener("scroll", reflow);
   }
 
-  scene.resize();
-  hud.resize();
+  reflow();
 }
 
 boot().catch(err => {

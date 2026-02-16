@@ -9,18 +9,16 @@ export class SceneEngine {
     this.sceneRectPx = null;
   }
 
-  _percentRectToPx(rectPct, viewportW, viewportH){
-    // rectPct is in %
+  _percentRectToPx(rectPct, w, h){
     return {
-      x: (rectPct.x/100) * viewportW,
-      y: (rectPct.y/100) * viewportH,
-      w: (rectPct.w/100) * viewportW,
-      h: (rectPct.h/100) * viewportH
+      x: (rectPct.x/100) * w,
+      y: (rectPct.y/100) * h,
+      w: (rectPct.w/100) * w,
+      h: (rectPct.h/100) * h
     };
   }
 
   async initSky(urls){
-    // Pixi app init (lazy init)
     if(!this.app){
       this.app = new PIXI.Application();
       await this.app.init({
@@ -39,21 +37,23 @@ export class SceneEngine {
   resize(){
     if(!this.app) return;
 
-    const vw = window.innerWidth;
-    const vh = window.innerHeight; // dvh already handled by css but canvas needs real px
+    // ✅ ใช้ขนาดของ stage จริง (scene-host อยู่ใน stage แล้ว)
+    const rect = this.hostEl.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
 
-    // canvas full-screen (we will clip by mask for sceneRect)
-    this.app.renderer.resize(vw, vh);
+    this.app.renderer.resize(w, h);
 
-    // compute sceneRect from % of viewport
-    this.sceneRectPx = this._percentRectToPx(this.layout.sceneRect, vw, vh);
+    // ✅ sceneRect อิงจาก stage (ไม่ใช่ viewport)
+    this.sceneRectPx = this._percentRectToPx(this.layout.sceneRect, w, h);
 
-    // apply mask so scene stays in grey area only
+    // mask เฉพาะพื้นที่สีเทา
     const g = new PIXI.Graphics();
     g.rect(this.sceneRectPx.x, this.sceneRectPx.y, this.sceneRectPx.w, this.sceneRectPx.h);
     g.fill({ color: 0xffffff, alpha: 1 });
+
     this.app.stage.mask = g;
-    this.app.stage.addChild(g); // keep mask graphic alive
+    this.app.stage.addChild(g);
 
     if(this.sky){
       this.sky.resizeToRect(this.sceneRectPx);

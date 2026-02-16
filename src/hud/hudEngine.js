@@ -1,8 +1,7 @@
 import { calcHandAngles } from "./clockHands.js";
 
 function el(tag){
-  const e = document.createElement(tag);
-  return e;
+  return document.createElement(tag);
 }
 
 export class HudEngine {
@@ -12,9 +11,9 @@ export class HudEngine {
     this.state = {};
     this.dialogueLang = "th";
 
-    this.templateImg = document.getElementById("template");
+    // ✅ อ้างอิง STAGE (ไม่ใช่ img) เพราะ stage คือระบบสเกล/ครอปของเรา
+    this.stageEl = document.getElementById("stage");
 
-    // elements
     this.monthEl = el("div");
     this.dayEl = el("div");
     this.statusEl = el("div");
@@ -64,18 +63,18 @@ export class HudEngine {
     this._applyLayout();
   }
 
-  _templateRect(){
-    return this.templateImg.getBoundingClientRect();
+  _stageRect(){
+    return this.stageEl.getBoundingClientRect();
   }
 
   _applyRectPx(elm, rectPct){
-    const r = this._templateRect();
-
-    const left = r.left + (rectPct.x/100) * r.width;
-    const top  = r.top  + (rectPct.y/100) * r.height;
+    const r = this._stageRect();
+    const left = (rectPct.x/100) * r.width;
+    const top  = (rectPct.y/100) * r.height;
     const w    = (rectPct.w/100) * r.width;
     const h    = (rectPct.h/100) * r.height;
 
+    // ✅ overlay อยู่ใน stage อยู่แล้ว => ใช้ px “ภายใน stage” (ไม่ต้อง + r.left/top)
     elm.style.left = left + "px";
     elm.style.top  = top  + "px";
     elm.style.width  = w + "px";
@@ -91,25 +90,23 @@ export class HudEngine {
     this._applyRectPx(this.moodEl,   L.moodText);
     this._applyRectPx(this.dialogueEl, L.dialogue);
 
+    // in-room anchor
     const slots = L.inRoom.slots;
     if(slots?.length){
       const first = slots[0];
-      const r = this._templateRect();
-
-      const left = r.left + (first.x/100) * r.width;
-      const top  = r.top  + (first.y/100) * r.height;
-
-      this.inRoomWrap.style.left = left + "px";
-      this.inRoomWrap.style.top  = top + "px";
+      const r = this._stageRect();
+      this.inRoomWrap.style.left = ((first.x/100) * r.width) + "px";
+      this.inRoomWrap.style.top  = ((first.y/100) * r.height) + "px";
     }
 
     // clock hands
     const c = L.clock.center;
-    const r = this._templateRect();
+    const r = this._stageRect();
 
-    const cx = r.left + (c.x/100) * r.width;
-    const cy = r.top  + (c.y/100) * r.height;
+    const cx = (c.x/100) * r.width;
+    const cy = (c.y/100) * r.height;
 
+    // length อิงจาก “หน้าจอ” ได้เหมือนเดิม (หรือจะอิงจาก stage ก็ได้)
     const hourLen = (L.clock.hourLenPctOfScreenW/100) * window.innerWidth;
     const minLen  = (L.clock.minLenPctOfScreenW/100) * window.innerWidth;
     const t = L.clock.thicknessPx;
@@ -160,13 +157,12 @@ export class HudEngine {
   _renderInRoom(list){
     this.inRoomWrap.innerHTML = "";
     const slots = this.layout.inRoom.slots;
+    const r = this._stageRect();
 
     list.slice(0, slots.length).forEach((id,i)=>{
       const s = slots[i];
-      const r = this._templateRect();
-
-      const w = (s.w/100)*r.width;
-      const h = (s.h/100)*r.height;
+      const w = (s.w/100) * r.width;
+      const h = (s.h/100) * r.height;
 
       const card = el("div");
       card.textContent = id.toUpperCase();
@@ -179,7 +175,6 @@ export class HudEngine {
       card.style.borderRadius = "10px";
       card.style.fontWeight = "800";
       card.style.color = "#2a2a2a";
-
       this.inRoomWrap.appendChild(card);
     });
   }
