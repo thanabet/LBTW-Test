@@ -17,7 +17,7 @@
   "moodText":   { "x": 49, "y": 64.8, "w": 40, "h": 3.5, "align": "center" },
 
   "dialogue": {
-    "x": 12, "y": 78.3, "w": 76, "h": 12,
+    "x": 12, "y": 69, "w": 76, "h": 12,
     "tapToToggleLang": true
   },
 
@@ -29,6 +29,7 @@
     ]
   }
 }
+
 
 
 
