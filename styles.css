@@ -1,20 +1,26 @@
 :root{
   --safe-top: env(safe-area-inset-top);
   --safe-bottom: env(safe-area-inset-bottom);
+
+  /* ปรับค่านี้ถ้า IN THE ROOM ยังขาด */
+  --template-shift-y: -5vh;
 }
 
 html, body {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: #000;
-  overscroll-behavior: none;
+  background: #c8c2ac; /* สีใกล้ template กันเห็นขอบ */
+  overflow: hidden;
 }
 
 #app{
-  position: relative;
+  position: fixed;        /* สำคัญมาก */
+  inset: 0;
   width: 100vw;
-  height: 100dvh; /* กัน Safari */
+  height: 100vh;          /* fallback */
+  height: 100dvh;         /* modern browser */
+  min-height: -webkit-fill-available; /* iOS in-app browser fix */
   overflow: hidden;
   touch-action: manipulation;
 }
@@ -24,8 +30,9 @@ html, body {
   inset: 0;
   width: 100vw;
   height: 100dvh;
-  object-fit: cover;       /* ซ้ายขวาชิด, บนล่างขาดได้ */
-  object-position: center top;
+  object-fit: cover;           /* ซ้ายขวาชิด */
+  object-position: center top; /* คุมแนวหลัก */
+  transform: translateY(var(--template-shift-y)); /* ดันขึ้น */
   z-index: 1;
   user-select: none;
   pointer-events: none;
@@ -34,20 +41,14 @@ html, body {
 #scene-host{
   position: absolute;
   inset: 0;
-  z-index: 2; /* อยู่เหนือ template */
-  pointer-events: none; /* กันไปบังการกด HUD */
+  z-index: 2;
+  pointer-events: none;
 }
 
 #overlay{
   position: absolute;
   inset: 0;
   z-index: 3;
-  /* overlay ต้องกดได้ */
   pointer-events: auto;
   font-family: ui-monospace, Menlo, Monaco, "Courier New", monospace;
-}
-
-/* ตัวช่วย debug เปิด/ปิดได้ในโค้ด */
-.debug-box{
-  outline: 2px dashed rgba(255,255,255,0.25);
 }
