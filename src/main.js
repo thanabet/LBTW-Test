@@ -9,7 +9,7 @@ const RATIO = TEMPLATE_H / TEMPLATE_W; // ~2.167
 // ✅ ปรับค่าเดียวนี้เพื่อ “เลื่อน template ลง/ขึ้น”
 // + = เลื่อนลง (เพิ่มพื้นที่ท้องฟ้า/ครึ่งบนยาวขึ้น)
 // - = เลื่อนขึ้น (โชว์ in-room มากขึ้น)
-const STAGE_Y_OFFSET_PX = 60;
+const STAGE_Y_OFFSET_PX = -20;
 
 async function loadJSON(url){
   const res = await fetch(url, { cache: "no-store" });
@@ -121,4 +121,5 @@ boot().catch(err => {
   console.error(err);
   document.body.style.background = "#111";
 });
+
 
