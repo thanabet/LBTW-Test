@@ -2,25 +2,29 @@
   --safe-top: env(safe-area-inset-top);
   --safe-bottom: env(safe-area-inset-bottom);
 
-  /* ปรับค่านี้ถ้า IN THE ROOM ยังขาด */
-  --template-shift-y: -5vh;
+  /* ✅ ปรับค่านี้เพื่อดัน template ขึ้นให้พ้นแถบล่าง */
+  --template-shift-y: -9vh;
+
+  /* ✅ จะถูก set จาก JS ให้เท่าความสูงจริงของจอที่มองเห็นได้ */
+  --vvh: 1vh;
 }
 
 html, body {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: #c8c2ac; /* สีใกล้ template กันเห็นขอบ */
+  background: #c8c2ac; /* กันเห็นขอบดำ */
   overflow: hidden;
 }
 
 #app{
-  position: fixed;        /* สำคัญมาก */
+  position: fixed;
   inset: 0;
   width: 100vw;
-  height: 100vh;          /* fallback */
-  height: 100dvh;         /* modern browser */
-  min-height: -webkit-fill-available; /* iOS in-app browser fix */
+
+  /* ✅ ใช้ความสูงจริงของ viewport (แก้ LINE/Safari bar บัง) */
+  height: calc(var(--vvh) * 100);
+
   overflow: hidden;
   touch-action: manipulation;
 }
@@ -29,10 +33,14 @@ html, body {
   position: absolute;
   inset: 0;
   width: 100vw;
-  height: 100dvh;
-  object-fit: cover;           /* ซ้ายขวาชิด */
-  object-position: center top; /* คุมแนวหลัก */
-  transform: translateY(var(--template-shift-y)); /* ดันขึ้น */
+  height: 100%;
+
+  object-fit: cover;
+  object-position: center top;
+
+  /* ✅ ดัน template ขึ้น */
+  transform: translateY(var(--template-shift-y));
+
   z-index: 1;
   user-select: none;
   pointer-events: none;

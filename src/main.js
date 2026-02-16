@@ -8,12 +8,28 @@ async function loadJSON(url){
   return await res.json();
 }
 
+/**
+ * ✅ Fix: iOS/LINE in-app browser bar
+ * ใช้ visualViewport.height เพื่อให้เต็ม "พื้นที่ที่มองเห็นได้จริง"
+ */
+function setVisualViewportHeight(){
+  const vv = window.visualViewport;
+  const h = vv ? vv.height : window.innerHeight;
+  document.documentElement.style.setProperty("--vvh", `${h * 0.01}px`);
+}
+
 async function boot(){
-  // Load layouts
+  // set vv height now + listen changes (bar show/hide)
+  setVisualViewportHeight();
+  if(window.visualViewport){
+    window.visualViewport.addEventListener("resize", setVisualViewportHeight);
+    window.visualViewport.addEventListener("scroll", setVisualViewportHeight);
+  }
+  window.addEventListener("resize", setVisualViewportHeight);
+
   const sceneLayout = await loadJSON("./data/scene_layout.json");
   const hudLayout = await loadJSON("./data/hud_layout.json");
 
-  // Engines
   const scene = new SceneEngine({
     hostEl: document.getElementById("scene-host"),
     sceneLayout
@@ -28,14 +44,11 @@ async function boot(){
     storyUrl: "./data/story/2026-02-14.json"
   });
 
-  // Wire: story -> hud
   await story.init();
-  hud.setState(story.getCurrentState());
-  hud.enableDialogueToggle(() => {
-    hud.toggleDialogueLang();
-  });
 
-  // Sky manager in scene (5 images)
+  hud.setState(story.getCurrentState());
+  hud.enableDialogueToggle(() => hud.toggleDialogueLang());
+
   await scene.initSky([
     "./assets/sky/sky_01.png",
     "./assets/sky/sky_02.png",
@@ -44,18 +57,14 @@ async function boot(){
     "./assets/sky/sky_05.png"
   ]);
 
-  // Tick loop
   function tick(){
     const now = new Date();
 
-    // update sky by real time
     scene.updateSkyByTime(now);
 
-    // story state by time (today only for now)
     const nextState = story.computeStateAt(now);
     hud.setState(nextState);
 
-    // realtime clock + calendar
     hud.setCalendar(now);
     hud.setClockHands(now);
 
@@ -63,19 +72,24 @@ async function boot(){
   }
   tick();
 
-  // Reflow on resize/orientation
-  window.addEventListener("resize", () => {
+  // ✅ รีคำนวณตำแหน่งทุกครั้งที่ viewport เปลี่ยน (รวมตอนแถบล่างโชว์/หาย)
+  const reflow = () => {
+    setVisualViewportHeight();
     scene.resize();
     hud.resize();
-  });
+  };
 
-  // initial layout
+  window.addEventListener("resize", reflow);
+  if(window.visualViewport){
+    window.visualViewport.addEventListener("resize", reflow);
+    window.visualViewport.addEventListener("scroll", reflow);
+  }
+
   scene.resize();
   hud.resize();
 }
 
 boot().catch(err => {
   console.error(err);
-  // Fallback: ถ้า scene พัง อย่างน้อย HUD ต้องไม่จอดำ
   document.body.style.background = "#111";
 });
