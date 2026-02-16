@@ -4,6 +4,8 @@ function el(tag){
   return document.createElement(tag);
 }
 
+const DEBUG_PICKER = true; // ✅ เปิดโหมดแตะเพื่ออ่านพิกัด % (ปิดก็ false)
+
 export class HudEngine {
   constructor({ overlayEl, hudLayout }){
     this.root = overlayEl;
@@ -11,7 +13,7 @@ export class HudEngine {
     this.state = {};
     this.dialogueLang = "th";
 
-    // ✅ อ้างอิง STAGE (ไม่ใช่ img) เพราะ stage คือระบบสเกล/ครอปของเรา
+    // อิง STAGE (ระบบสเกล/ครอปเดียวกับ template)
     this.stageEl = document.getElementById("stage");
 
     this.monthEl = el("div");
@@ -57,6 +59,18 @@ export class HudEngine {
     this.inRoomWrap.style.position = "absolute";
     this.inRoomWrap.style.display = "flex";
     this.inRoomWrap.style.gap = "0.5rem";
+
+    // ✅ debug: แตะแล้วพิมพ์ % ลง console (มือถือเปิด remote debug หรือดู log บนคอม)
+    if(DEBUG_PICKER){
+      this.root.addEventListener("click", (ev) => {
+        const r = this._stageRect();
+        const x = ev.clientX - r.left;
+        const y = ev.clientY - r.top;
+        const xp = (x / r.width) * 100;
+        const yp = (y / r.height) * 100;
+        console.log(`[PICK] x:${xp.toFixed(2)}% y:${yp.toFixed(2)}%`);
+      });
+    }
   }
 
   resize(){
@@ -74,7 +88,6 @@ export class HudEngine {
     const w    = (rectPct.w/100) * r.width;
     const h    = (rectPct.h/100) * r.height;
 
-    // ✅ overlay อยู่ใน stage อยู่แล้ว => ใช้ px “ภายใน stage” (ไม่ต้อง + r.left/top)
     elm.style.left = left + "px";
     elm.style.top  = top  + "px";
     elm.style.width  = w + "px";
@@ -102,11 +115,9 @@ export class HudEngine {
     // clock hands
     const c = L.clock.center;
     const r = this._stageRect();
-
     const cx = (c.x/100) * r.width;
     const cy = (c.y/100) * r.height;
 
-    // length อิงจาก “หน้าจอ” ได้เหมือนเดิม (หรือจะอิงจาก stage ก็ได้)
     const hourLen = (L.clock.hourLenPctOfScreenW/100) * window.innerWidth;
     const minLen  = (L.clock.minLenPctOfScreenW/100) * window.innerWidth;
     const t = L.clock.thicknessPx;
