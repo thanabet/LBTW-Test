@@ -31,13 +31,17 @@ export class HudEngine {
     this.portraitEl.style.pointerEvents = "auto";
     this.portraitEl.style.cursor = "pointer";
 
-    // ✅ NEW: status icon
+    // 🔥 NEW: portrait animation timer
+    this._portraitAnimTimer = null;
+    this._portraitAnimIndex = 0;
+
+    // status icon
     this.statusIconEl = el("img");
     this.statusIconEl.style.position = "absolute";
     this.statusIconEl.style.objectFit = "contain";
     this.statusIconEl.style.userSelect = "none";
-    this.statusIconEl.style.pointerEvents = "none"; // ไม่บังการกด
-    this.statusIconEl.style.display = "none"; // default ซ่อนก่อน
+    this.statusIconEl.style.pointerEvents = "none";
+    this.statusIconEl.style.display = "none";
 
     this.root.append(
       this.monthEl, this.dayEl,
@@ -112,7 +116,6 @@ export class HudEngine {
       this._applyRectPx(this.portraitEl, L.portrait);
     }
 
-    // ✅ NEW: status icon layout (ถ้ามีใน json)
     if (L.statusIcon) {
       this._applyRectPx(this.statusIconEl, L.statusIcon);
     }
@@ -157,11 +160,49 @@ export class HudEngine {
     this.minHand.style.transform  = `rotate(${minDeg}deg)`;
   }
 
+  // 🔥 STOP animation safely
+  _stopPortraitAnim(){
+    if(this._portraitAnimTimer){
+      clearTimeout(this._portraitAnimTimer);
+      this._portraitAnimTimer = null;
+    }
+  }
+
+  // 🔥 play animation with custom duration per frame
+  _playPortraitAnim(anim){
+    this._stopPortraitAnim();
+
+    if(!anim?.frames?.length) return;
+
+    this._portraitAnimIndex = 0;
+
+    const playFrame = () => {
+      const frameName = anim.frames[this._portraitAnimIndex];
+      const duration = anim.durationsMs?.[this._portraitAnimIndex] ?? 500;
+
+      this.portraitEl.src = `assets/portrait/${frameName}.png`;
+
+      this._portraitAnimIndex++;
+
+      if(this._portraitAnimIndex >= anim.frames.length){
+        if(anim.loop){
+          this._portraitAnimIndex = 0;
+        }else{
+          return;
+        }
+      }
+
+      this._portraitAnimTimer = setTimeout(playFrame, duration);
+    };
+
+    playFrame();
+  }
+
   setPortrait(emotion){
+    this._stopPortraitAnim();
     this.portraitEl.src = `assets/portrait/${emotion}.png`;
   }
 
-  // ✅ NEW: set status icon (ซ่อนถ้าไม่มี)
   setStatusIcon(iconKey){
     if(!iconKey){
       this.statusIconEl.style.display = "none";
@@ -180,13 +221,14 @@ export class HudEngine {
     const dlg = this.state.dialogue || {};
     this.dialogueEl.textContent = dlg[this.dialogueLang] || "";
 
-    if (this.state.emotion) {
+    // 🔥 portrait logic
+    if (this.state.portraitAnim){
+      this._playPortraitAnim(this.state.portraitAnim);
+    } else if (this.state.emotion) {
       this.setPortrait(this.state.emotion);
     }
 
-    // ✅ NEW: read from story state
     this.setStatusIcon(this.state.statusIcon);
-
     this._renderInRoom(this.state.inRoom || []);
   }
 

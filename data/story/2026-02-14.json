@@ -5,20 +5,38 @@
     {
       "time": "06:30",
       "state": {
-"statusIcon": "book",
+        "emotion": "normal",
+        "portraitAnim": {
+          "frames": ["normal_1", "normal_2"],
+          "durationsMs": [1500, 120],
+          "loop": true
+        },
+        "statusIcon": "book",
         "status": "STATUS : WAKE UP",
         "mood": "MOOD : SLEEPY",
-        "dialogue": { "th": "เช้านี้อากาศดี…", "en": "Nice morning..." },
+        "dialogue": {
+          "th": "เช้านี้อากาศดี…",
+          "en": "Nice morning..."
+        },
         "inRoom": ["army", "fai"]
       }
     },
     {
       "time": "18:10",
       "state": {
-"statusIcon": "book",
+        "emotion": "normal",
+        "portraitAnim": {
+          "frames": ["normal_1", "normal_2", "normal_3"],
+          "durationsMs": [1200, 90, 150],
+          "loop": true
+        },
+        "statusIcon": "book",
         "status": "STATUS : READING",
         "mood": "MOOD : FOCUSED",
-        "dialogue": { "th": "พรุ่งนี้ต้องอ่านให้จบ…", "en": "I must finish it..." },
+        "dialogue": {
+          "th": "พรุ่งนี้ต้องอ่านให้จบ…",
+          "en": "I must finish it..."
+        },
         "inRoom": ["army", "fai", "poon"]
       }
     }
