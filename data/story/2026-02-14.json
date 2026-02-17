@@ -7,7 +7,7 @@
       "state": {
   "emotion": "normal",
   "portraitFrames": 2,
-  "portraitFrameDurationsMs": [1200, 120]
+  "portraitFps": 4
 "statusIcon": "book",
         "status": "STATUS : WAKE UP",
         "mood": "MOOD : SLEEPY",
@@ -20,7 +20,7 @@
       "state": {
   "emotion": "normal",
   "portraitFrames": 2,
-  "portraitFrameDurationsMs": [1200, 120]
+  "portraitFps": 4
 "statusIcon": "book",
         "status": "STATUS : READING",
         "mood": "MOOD : FOCUSED",

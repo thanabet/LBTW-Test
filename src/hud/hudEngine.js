@@ -77,9 +77,13 @@ export class HudEngine {
 
     // ===== NEW: portrait animation runtime =====
     this._portraitTimer = null;
-    this._portraitKey = null;
+    this._portraitFrames = [];
+    this._portraitFrameIndex = 0;
+    this._portraitEmotion = "normal";
+    this._portraitFrameMs = 700; // default speed
+    this._portraitUseNumberedFrames = false;
 
-    // default portrait (static)
+    // start default portrait (still image)
     this.setPortrait("normal");
   }
 
@@ -113,13 +117,8 @@ export class HudEngine {
     this._applyRectPx(this.moodEl,   L.moodText);
     this._applyRectPx(this.dialogueEl, L.dialogue);
 
-    if (L.portrait) {
-      this._applyRectPx(this.portraitEl, L.portrait);
-    }
-
-    if (L.statusIcon) {
-      this._applyRectPx(this.statusIconEl, L.statusIcon);
-    }
+    if (L.portrait) this._applyRectPx(this.portraitEl, L.portrait);
+    if (L.statusIcon) this._applyRectPx(this.statusIconEl, L.statusIcon);
 
     const slots = L.inRoom.slots;
     if(slots?.length){
@@ -161,49 +160,7 @@ export class HudEngine {
     this.minHand.style.transform  = `rotate(${minDeg}deg)`;
   }
 
-  // ============ Portrait (static) ============
-  setPortrait(emotion){
-    this._stopPortraitAnim();
-    this._portraitKey = `static:${emotion}`;
-    this.portraitEl.src = `assets/portrait/${emotion}.png`;
-  }
-
-  // ============ Portrait (animated 2–3 frames) ============
-  setPortraitAnimated(emotion, frames = 2, intervalMs = 850){
-    // กันค่าพัง
-    const n = Math.max(1, Math.min(10, Number(frames) || 1));
-    const iv = Math.max(120, Number(intervalMs) || 850);
-
-    const key = `anim:${emotion}:${n}:${iv}`;
-    if (this._portraitKey === key) return; // ไม่ต้องรีสตาร์ทถ้าเหมือนเดิม
-
-    this._stopPortraitAnim();
-    this._portraitKey = key;
-
-    // ถ้าเฟรม 1 ก็ fallback เป็น static
-    if (n <= 1){
-      this.portraitEl.src = `assets/portrait/${emotion}.png`;
-      return;
-    }
-
-    let frame = 1;
-    this.portraitEl.src = `assets/portrait/${emotion}_${frame}.png`;
-
-    this._portraitTimer = setInterval(() => {
-      frame = frame + 1;
-      if (frame > n) frame = 1;
-      this.portraitEl.src = `assets/portrait/${emotion}_${frame}.png`;
-    }, iv);
-  }
-
-  _stopPortraitAnim(){
-    if (this._portraitTimer){
-      clearInterval(this._portraitTimer);
-      this._portraitTimer = null;
-    }
-  }
-
-  // ============ Status icon ============
+  // ===== STATUS ICON =====
   setStatusIcon(iconKey){
     if(!iconKey){
       this.statusIconEl.style.display = "none";
@@ -214,6 +171,97 @@ export class HudEngine {
     this.statusIconEl.style.display = "block";
   }
 
+  // =========================================================
+  // ✅ PORTRAIT (still) + PORTRAIT ANIMATION (2–3 frames)
+  // =========================================================
+
+  _stopPortraitAnim(){
+    if(this._portraitTimer){
+      clearInterval(this._portraitTimer);
+      this._portraitTimer = null;
+    }
+  }
+
+  /**
+   * Set portrait emotion.
+   * - If you have numbered frames: assets/portrait/<emotion>_1.png ... _N.png
+   *   then call setPortraitAnim(emotion, N, frameMs)
+   * - Otherwise fallback to assets/portrait/<emotion>.png (still image)
+   */
+  setPortrait(emotion){
+    this._portraitEmotion = emotion || "normal";
+
+    // Stop any running animation first
+    this._stopPortraitAnim();
+
+    // Default: still image
+    this._portraitUseNumberedFrames = false;
+    this.portraitEl.src = `assets/portrait/${this._portraitEmotion}.png`;
+  }
+
+  /**
+   * Run idle animation with 2–3 frames.
+   * @param {string} emotion e.g. "normal"
+   * @param {number} frameCount e.g. 2 or 3
+   * @param {number} frameMs time per frame in ms (e.g. 250)
+   */
+  setPortraitAnim(emotion, frameCount = 2, frameMs = 400){
+    this._portraitEmotion = emotion || "normal";
+    this._portraitFrameMs = Math.max(50, Number(frameMs) || 400);
+
+    const n = Math.max(1, Math.min(10, Number(frameCount) || 2)); // safety cap
+    this._portraitFrames = [];
+    for(let i=1;i<=n;i++){
+      this._portraitFrames.push(`assets/portrait/${this._portraitEmotion}_${i}.png`);
+    }
+
+    // restart
+    this._stopPortraitAnim();
+    this._portraitUseNumberedFrames = true;
+    this._portraitFrameIndex = 0;
+    this.portraitEl.src = this._portraitFrames[0];
+
+    this._portraitTimer = setInterval(()=>{
+      this._portraitFrameIndex = (this._portraitFrameIndex + 1) % this._portraitFrames.length;
+      this.portraitEl.src = this._portraitFrames[this._portraitFrameIndex];
+    }, this._portraitFrameMs);
+  }
+
+  /**
+   * Helper: allow speed config from state:
+   * - portraitFrames: 1/2/3 (default 1)
+   * - portraitFrameMs: e.g. 250 (priority over fps)
+   * - portraitFps: e.g. 4 => 250ms
+   */
+  _applyPortraitFromState(state){
+    const emo = state.emotion || "normal";
+
+    const frames = Number(state.portraitFrames || 1);
+    const hasAnim = frames >= 2;
+
+    let frameMs = state.portraitFrameMs;
+    if(frameMs == null){
+      const fps = Number(state.portraitFps || 0);
+      if(fps > 0) frameMs = 1000 / fps;
+    }
+    if(frameMs == null) frameMs = this._portraitFrameMs;
+
+    // Only restart if something changed
+    const needRestart =
+      (emo !== this._portraitEmotion) ||
+      (hasAnim !== this._portraitUseNumberedFrames) ||
+      (hasAnim && frames !== this._portraitFrames.length) ||
+      (hasAnim && Math.round(frameMs) !== Math.round(this._portraitFrameMs));
+
+    if(!needRestart) return;
+
+    if(hasAnim){
+      this.setPortraitAnim(emo, frames, frameMs);
+    }else{
+      this.setPortrait(emo);
+    }
+  }
+
   setState(state){
     this.state = state || {};
     this.statusEl.textContent = this.state.status || "";
@@ -222,15 +270,10 @@ export class HudEngine {
     const dlg = this.state.dialogue || {};
     this.dialogueEl.textContent = dlg[this.dialogueLang] || "";
 
-    // portrait: ถ้าอยาก animate ให้ส่ง portraitFrames (2 หรือ 3)
-    if (this.state.emotion) {
-      const frames = Number(this.state.portraitFrames || 1);
-      const intervalMs = Number(this.state.portraitIntervalMs || 850);
+    // portrait (still/anim) from state
+    this._applyPortraitFromState(this.state);
 
-      if (frames >= 2) this.setPortraitAnimated(this.state.emotion, frames, intervalMs);
-      else this.setPortrait(this.state.emotion);
-    }
-
+    // status icon from state
     this.setStatusIcon(this.state.statusIcon);
 
     this._renderInRoom(this.state.inRoom || []);
