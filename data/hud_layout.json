@@ -2,7 +2,7 @@
   "templateSize": { "w": 1595, "h": 3457 },
 
   "portrait": { "x": 8.5, "y": 48, "w": 21, "h": 21 },
-"statusIcon": { "x": 50, "y": 50, "w": 6, "h": 6 },
+"statusIcon": { "x": 45, "y": 55, "w": 6, "h": 6 },
 
 
   "calendar": {
@@ -33,6 +33,7 @@
     ]
   }
 }
+
 
 
 
