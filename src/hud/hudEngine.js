@@ -4,15 +4,26 @@ function el(tag){
   return document.createElement(tag);
 }
 
+// ✅ robust tap handler (iOS-friendly)
+function onTap(target, fn){
+  let last = 0;
+  const run = (e) => {
+    const now = Date.now();
+    if (now - last < 350) return; // กันยิงซ้ำ
+    last = now;
+    try { fn(e); } catch(_) {}
+  };
+  target.addEventListener("pointerup", run, { passive: true });
+  target.addEventListener("touchend", run, { passive: true });
+  target.addEventListener("click", run);
+}
+
 export class HudEngine {
   constructor({ overlayEl, hudLayout }){
     this.root = overlayEl;
     this.layout = hudLayout;
     this.state = {};
     this.dialogueLang = "th";
-
-    // ✅ FIX: ให้ HUD overlay รับคลิกได้ (กันโดน CSS pointer-events:none ทับ)
-    this.root.style.pointerEvents = "auto";
 
     this.stageEl = document.getElementById("stage");
 
@@ -31,8 +42,8 @@ export class HudEngine {
     this.portraitEl.style.position = "absolute";
     this.portraitEl.style.objectFit = "contain";
     this.portraitEl.style.userSelect = "none";
-    this.portraitEl.style.pointerEvents = "auto"; // ✅ clickable
     this.portraitEl.style.cursor = "pointer";
+    this.portraitEl.style.pointerEvents = "auto";
 
     this._portraitAnimTimer = null;
     this._portraitAnimIndex = 0;
@@ -52,12 +63,12 @@ export class HudEngine {
     this._statusAnimSig = null;
     this._lastStatusIcon = null;
 
-    /* ---------- logo hotspot ---------- */
+    // logo hotspot
     this.logoHotspotEl = el("div");
     this.logoHotspotEl.style.position = "absolute";
     this.logoHotspotEl.style.background = "transparent";
-    this.logoHotspotEl.style.pointerEvents = "auto"; // ✅ clickable
     this.logoHotspotEl.style.cursor = "pointer";
+    this.logoHotspotEl.style.pointerEvents = "auto";
     this.logoHotspotEl.style.display = "none";
 
     this.root.append(
@@ -76,13 +87,13 @@ export class HudEngine {
       e.style.color = "#2a2a2a";
       e.style.fontWeight = "700";
       e.style.userSelect = "none";
-      // ✅ FIX: ให้ element overlay รับคลิกได้ (โดยเฉพาะ month/day/dialogue)
-      e.style.pointerEvents = "auto";
     }
 
-    // ทำให้ปฏิทินคลิกได้
+    // ✅ calendar clickable
     this.monthEl.style.cursor = "pointer";
     this.dayEl.style.cursor = "pointer";
+    this.monthEl.style.pointerEvents = "auto";
+    this.dayEl.style.pointerEvents = "auto";
 
     this.dialogueEl.style.cursor = "pointer";
     this.dialogueEl.style.display = "flex";
@@ -102,25 +113,31 @@ export class HudEngine {
     this.inRoomWrap.style.position = "absolute";
     this.inRoomWrap.style.display = "flex";
     this.inRoomWrap.style.gap = "0.5rem";
-    this.inRoomWrap.style.pointerEvents = "auto"; // ✅ clickable children
+    this.inRoomWrap.style.pointerEvents = "auto";
 
-    /* ---------- modal system ---------- */
+    // modal system
     this._initModal();
 
-    /* ---------- click events ---------- */
-    this.portraitEl.addEventListener("click", () => {
+    // ✅ tiny toast (no console needed)
+    this._initToast();
+
+    // tap events
+    onTap(this.portraitEl, () => {
+      this._toast("portrait");
       const src = this.state.profileCardSrc || "assets/cards/profile_card.png";
       this._openModal(src);
     });
 
     const openSchedule = () => {
+      this._toast("calendar");
       const src = this.state.scheduleCardSrc || "assets/cards/schedule_card.png";
       this._openModal(src);
     };
-    this.monthEl.addEventListener("click", openSchedule);
-    this.dayEl.addEventListener("click", openSchedule);
+    onTap(this.monthEl, openSchedule);
+    onTap(this.dayEl, openSchedule);
 
-    this.logoHotspotEl.addEventListener("click", () => {
+    onTap(this.logoHotspotEl, () => {
+      this._toast("logo");
       if(this.layout.intromieUrl){
         window.open(this.layout.intromieUrl, "_blank", "noopener,noreferrer");
       }
@@ -129,8 +146,37 @@ export class HudEngine {
     this.setPortrait("normal");
   }
 
-  /* ---------- MODAL ---------- */
+  /* ---------- TOAST ---------- */
+  _initToast(){
+    this.toastEl = el("div");
+    Object.assign(this.toastEl.style,{
+      position:"fixed",
+      left:"50%",
+      top:"14px",
+      transform:"translateX(-50%)",
+      padding:"8px 12px",
+      borderRadius:"999px",
+      background:"rgba(0,0,0,0.7)",
+      color:"#fff",
+      fontSize:"12px",
+      zIndex:"1000000",
+      display:"none",
+      pointerEvents:"none"
+    });
+    document.body.appendChild(this.toastEl);
+    this._toastTimer = null;
+  }
 
+  _toast(msg){
+    this.toastEl.textContent = msg;
+    this.toastEl.style.display = "block";
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(()=> {
+      this.toastEl.style.display = "none";
+    }, 700);
+  }
+
+  /* ---------- MODAL ---------- */
   _initModal(){
     this.modalBackdrop = el("div");
     Object.assign(this.modalBackdrop.style,{
@@ -140,18 +186,21 @@ export class HudEngine {
       alignItems:"center",
       justifyContent:"center",
       background:"rgba(0,0,0,0.55)",
-      zIndex:"999999"
+      zIndex:"999999",
+      pointerEvents:"auto"
     });
 
     this.modalCard = el("div");
     this.modalCard.style.position="relative";
+    this.modalCard.style.pointerEvents="auto";
 
     this.modalImg = el("img");
     Object.assign(this.modalImg.style,{
       maxWidth:"92vw",
       maxHeight:"88vh",
       borderRadius:"16px",
-      display:"block"
+      display:"block",
+      pointerEvents:"none"
     });
 
     this.modalClose = el("button");
@@ -166,7 +215,8 @@ export class HudEngine {
       cursor:"pointer",
       background:"rgba(0,0,0,0.7)",
       color:"#fff",
-      fontSize:"18px"
+      fontSize:"18px",
+      pointerEvents:"auto"
     });
     this.modalClose.textContent="✕";
 
@@ -174,10 +224,10 @@ export class HudEngine {
     this.modalBackdrop.appendChild(this.modalCard);
     document.body.appendChild(this.modalBackdrop);
 
-    this.modalClose.onclick=()=>this._closeModal();
-    this.modalBackdrop.onclick=(e)=>{
+    onTap(this.modalClose, ()=>this._closeModal());
+    onTap(this.modalBackdrop, (e)=>{
       if(e.target===this.modalBackdrop) this._closeModal();
-    };
+    });
   }
 
   _openModal(src){
@@ -190,9 +240,7 @@ export class HudEngine {
   }
 
   /* ---------- LAYOUT ---------- */
-
   resize(){ this._applyLayout(); }
-
   _stageRect(){ return this.stageEl.getBoundingClientRect(); }
 
   _applyRectPx(elm, rectPct){
@@ -215,7 +263,6 @@ export class HudEngine {
     if(L.portrait) this._applyRectPx(this.portraitEl,L.portrait);
     if(L.statusIcon) this._applyRectPx(this.statusIconEl,L.statusIcon);
 
-    // logo hotspot
     if(L.logoHotspot){
       this.logoHotspotEl.style.display="block";
       this._applyRectPx(this.logoHotspotEl,L.logoHotspot);
@@ -395,11 +442,11 @@ export class HudEngine {
       card.style.height=(s.h/100)*r.height+"px";
       card.style.objectFit="contain";
       card.style.borderRadius="8px";
-
-      // click to open character info card
       card.style.cursor="pointer";
       card.style.pointerEvents="auto";
-      card.addEventListener("click", ()=>{
+
+      onTap(card, ()=>{
+        this._toast(`inRoom:${id}`);
         this._openModal(`assets/cards/characters/${id}.png`);
       });
 
