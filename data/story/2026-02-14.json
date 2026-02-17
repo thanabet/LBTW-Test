@@ -53,8 +53,9 @@
           "th": "พรุ่งนี้ต้องอ่านให้จบ…",
           "en": "I must finish it..."
         },
-        "inRoom": ["army", "fai", "poon"]
+        "inRoom": ["army", "poon"]
       }
     }
   ]
 }
+
