@@ -2,8 +2,7 @@
   "templateSize": { "w": 1595, "h": 3457 },
 
   "portrait": { "x": 8.5, "y": 48, "w": 21, "h": 21 },
-"statusIcon": { "x": 40.5, "y": 50.1, "w": 10, "h": 10 },
-
+  "statusIcon": { "x": 40.5, "y": 50.1, "w": 10, "h": 10 },
 
   "calendar": {
     "month": { "x": 86, "y": 52, "w": 8, "h": 3.2, "align": "center" },
@@ -31,7 +30,10 @@
       { "x": 40, "y": 80.7, "w": 14, "h": 7 },
       { "x": 54, "y": 80.7, "w": 14, "h": 7 }
     ]
-  }
+  },
+
+  "logoHotspot": { "x": 86, "y": 91.5, "w": 12, "h": 6 },
+  "intromieUrl": "https://intromie.com"
 }
 
 

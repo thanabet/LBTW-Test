@@ -31,12 +31,15 @@ export class HudEngine {
     this.portraitEl.style.pointerEvents = "auto";
     this.portraitEl.style.cursor = "pointer";
 
+    // portrait animation
     this._portraitAnimTimer = null;
     this._portraitAnimIndex = 0;
+
+    // guard กัน restart animation ทุก tick
     this._portraitAnimSig = null;
     this._lastEmotion = null;
 
-    // 🔥 status icon
+    // status icon (ของเดิม)
     this.statusIconEl = el("img");
     this.statusIconEl.style.position = "absolute";
     this.statusIconEl.style.objectFit = "contain";
@@ -44,11 +47,13 @@ export class HudEngine {
     this.statusIconEl.style.pointerEvents = "none";
     this.statusIconEl.style.display = "none";
 
-    // 🔥 NEW: status icon animation
-    this._statusAnimTimer = null;
-    this._statusAnimIndex = 0;
-    this._statusAnimSig = null;
-    this._lastStatusIcon = null;
+    // ✅ NEW: logo hotspot (ไม่บังคับ ใช้เมื่อมี layout.logoHotspot)
+    this.logoHotspotEl = el("div");
+    this.logoHotspotEl.style.position = "absolute";
+    this.logoHotspotEl.style.background = "transparent";
+    this.logoHotspotEl.style.pointerEvents = "auto";
+    this.logoHotspotEl.style.cursor = "pointer";
+    this.logoHotspotEl.style.display = "none"; // เปิดเมื่อมี layout
 
     this.root.append(
       this.monthEl, this.dayEl,
@@ -57,7 +62,8 @@ export class HudEngine {
       this.inRoomWrap,
       this.hourHand, this.minHand,
       this.portraitEl,
-      this.statusIconEl
+      this.statusIconEl,
+      this.logoHotspotEl
     );
 
     for(const e of [this.monthEl,this.dayEl,this.statusEl,this.moodEl,this.dialogueEl]){
@@ -66,6 +72,10 @@ export class HudEngine {
       e.style.fontWeight = "700";
       e.style.userSelect = "none";
     }
+
+    // calendar clickable
+    this.monthEl.style.cursor = "pointer";
+    this.dayEl.style.cursor = "pointer";
 
     this.dialogueEl.style.cursor = "pointer";
     this.dialogueEl.style.display = "flex";
@@ -86,8 +96,120 @@ export class HudEngine {
     this.inRoomWrap.style.display = "flex";
     this.inRoomWrap.style.gap = "0.5rem";
 
+    // ✅ NEW: modal system (popup card)
+    this._initModal();
+
+    // ✅ NEW: click handlers (portrait + calendar)
+    this.portraitEl.addEventListener("click", () => {
+      const src = this._getProfileCardSrc();
+      if (src) this._openModal(src);
+    });
+
+    const openSchedule = () => {
+      const src = this._getScheduleCardSrc();
+      if (src) this._openModal(src);
+    };
+    this.monthEl.addEventListener("click", openSchedule);
+    this.dayEl.addEventListener("click", openSchedule);
+
+    // ✅ NEW: logo click -> intromie
+    this.logoHotspotEl.addEventListener("click", () => {
+      const url = this._getIntromieUrl();
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+    });
+
     this.setPortrait("normal");
   }
+
+  /* ---------------- Modal (Popup Card) ---------------- */
+
+  _initModal(){
+    this.modalBackdrop = el("div");
+    this.modalBackdrop.style.position = "fixed";
+    this.modalBackdrop.style.left = "0";
+    this.modalBackdrop.style.top = "0";
+    this.modalBackdrop.style.width = "100vw";
+    this.modalBackdrop.style.height = "100vh";
+    this.modalBackdrop.style.display = "none";
+    this.modalBackdrop.style.alignItems = "center";
+    this.modalBackdrop.style.justifyContent = "center";
+    this.modalBackdrop.style.background = "rgba(0,0,0,0.55)";
+    this.modalBackdrop.style.zIndex = "999999";
+
+    this.modalCard = el("div");
+    this.modalCard.style.position = "relative";
+    this.modalCard.style.maxWidth = "92vw";
+    this.modalCard.style.maxHeight = "88vh";
+
+    this.modalImg = el("img");
+    this.modalImg.style.display = "block";
+    this.modalImg.style.maxWidth = "92vw";
+    this.modalImg.style.maxHeight = "88vh";
+    this.modalImg.style.borderRadius = "16px";
+    this.modalImg.style.userSelect = "none";
+    this.modalImg.style.webkitUserSelect = "none";
+
+    this.modalClose = el("button");
+    this.modalClose.type = "button";
+    this.modalClose.textContent = "✕";
+    this.modalClose.style.position = "absolute";
+    this.modalClose.style.right = "10px";
+    this.modalClose.style.top = "10px";
+    this.modalClose.style.width = "36px";
+    this.modalClose.style.height = "36px";
+    this.modalClose.style.borderRadius = "999px";
+    this.modalClose.style.border = "none";
+    this.modalClose.style.cursor = "pointer";
+    this.modalClose.style.background = "rgba(0,0,0,0.65)";
+    this.modalClose.style.color = "#fff";
+    this.modalClose.style.fontSize = "18px";
+    this.modalClose.style.lineHeight = "36px";
+
+    this.modalCard.appendChild(this.modalImg);
+    this.modalCard.appendChild(this.modalClose);
+    this.modalBackdrop.appendChild(this.modalCard);
+    document.body.appendChild(this.modalBackdrop);
+
+    // close interactions
+    this.modalClose.addEventListener("click", () => this._closeModal());
+    this.modalBackdrop.addEventListener("click", (e) => {
+      // คลิกนอกการ์ดเพื่อปิด
+      if (e.target === this.modalBackdrop) this._closeModal();
+    });
+  }
+
+  _openModal(imgSrc){
+    this.modalImg.src = imgSrc;
+    this.modalBackdrop.style.display = "flex";
+  }
+
+  _closeModal(){
+    this.modalBackdrop.style.display = "none";
+  }
+
+  _getProfileCardSrc(){
+    // priority: state -> layout -> default
+    return (
+      this.state.profileCardSrc ||
+      this.layout.profileCardSrc ||
+      "assets/cards/profile_card.png"
+    );
+  }
+
+  _getScheduleCardSrc(){
+    return (
+      this.state.scheduleCardSrc ||
+      this.layout.scheduleCardSrc ||
+      "assets/cards/schedule_card.png"
+    );
+  }
+
+  _getIntromieUrl(){
+    // priority: layout -> default(null)
+    return this.layout.intromieUrl || null;
+  }
+
+  /* ---------------- Layout / Resize ---------------- */
 
   resize(){
     this._applyLayout();
@@ -99,10 +221,15 @@ export class HudEngine {
 
   _applyRectPx(elm, rectPct){
     const r = this._stageRect();
-    elm.style.left   = (rectPct.x/100) * r.width + "px";
-    elm.style.top    = (rectPct.y/100) * r.height + "px";
-    elm.style.width  = (rectPct.w/100) * r.width + "px";
-    elm.style.height = (rectPct.h/100) * r.height + "px";
+    const left = (rectPct.x/100) * r.width;
+    const top  = (rectPct.y/100) * r.height;
+    const w    = (rectPct.w/100) * r.width;
+    const h    = (rectPct.h/100) * r.height;
+
+    elm.style.left = left + "px";
+    elm.style.top  = top  + "px";
+    elm.style.width  = w + "px";
+    elm.style.height = h + "px";
   }
 
   _applyLayout(){
@@ -114,23 +241,37 @@ export class HudEngine {
     this._applyRectPx(this.moodEl,   L.moodText);
     this._applyRectPx(this.dialogueEl, L.dialogue);
 
-    if (L.portrait) this._applyRectPx(this.portraitEl, L.portrait);
-    if (L.statusIcon) this._applyRectPx(this.statusIconEl, L.statusIcon);
+    if (L.portrait) {
+      this._applyRectPx(this.portraitEl, L.portrait);
+    }
+
+    if (L.statusIcon) {
+      this._applyRectPx(this.statusIconEl, L.statusIcon);
+    }
+
+    // ✅ NEW: logo hotspot only if provided
+    if (L.logoHotspot) {
+      this.logoHotspotEl.style.display = "block";
+      this._applyRectPx(this.logoHotspotEl, L.logoHotspot);
+    } else {
+      this.logoHotspotEl.style.display = "none";
+    }
 
     const slots = L.inRoom.slots;
     if(slots?.length){
+      const first = slots[0];
       const r = this._stageRect();
-      this.inRoomWrap.style.left = (slots[0].x/100)*r.width + "px";
-      this.inRoomWrap.style.top  = (slots[0].y/100)*r.height + "px";
+      this.inRoomWrap.style.left = ((first.x/100) * r.width) + "px";
+      this.inRoomWrap.style.top  = ((first.y/100) * r.height) + "px";
     }
 
     const c = L.clock.center;
     const r = this._stageRect();
-    const cx = (c.x/100)*r.width;
-    const cy = (c.y/100)*r.height;
+    const cx = (c.x/100) * r.width;
+    const cy = (c.y/100) * r.height;
 
-    const hourLen = (L.clock.hourLenPctOfScreenW/100)*window.innerWidth;
-    const minLen  = (L.clock.minLenPctOfScreenW/100)*window.innerWidth;
+    const hourLen = (L.clock.hourLenPctOfScreenW/100) * window.innerWidth;
+    const minLen  = (L.clock.minLenPctOfScreenW/100) * window.innerWidth;
     const t = L.clock.thicknessPx;
 
     this.hourHand.style.width = `${t}px`;
@@ -144,10 +285,12 @@ export class HudEngine {
     this.minHand.style.top  = `${cy - minLen*0.9}px`;
   }
 
+  /* ---------------- Time / Text ---------------- */
+
   setCalendar(now){
-    const m = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
-    this.monthEl.textContent = m[now.getMonth()];
-    this.dayEl.textContent = now.getDate();
+    const months = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+    this.monthEl.textContent = months[now.getMonth()];
+    this.dayEl.textContent = String(now.getDate());
   }
 
   setClockHands(now){
@@ -156,7 +299,7 @@ export class HudEngine {
     this.minHand.style.transform  = `rotate(${minDeg}deg)`;
   }
 
-  /* ---------------- PORTRAIT ---------------- */
+  /* ---------------- Portrait Anim ---------------- */
 
   _stopPortraitAnim(){
     if(this._portraitAnimTimer){
@@ -166,9 +309,10 @@ export class HudEngine {
   }
 
   _makeAnimSig(anim){
-    return (anim.frames||[]).join("|") + "::" +
-           (anim.durationsMs||[]).join(",") + "::" +
-           (anim.loop?"1":"0");
+    const frames = (anim.frames || []).join("|");
+    const durs = (anim.durationsMs || []).join(",");
+    const loop = anim.loop ? "1" : "0";
+    return `${frames}::${durs}::${loop}`;
   }
 
   _playPortraitAnim(anim){
@@ -177,20 +321,26 @@ export class HudEngine {
 
     this._portraitAnimIndex = 0;
 
-    const play = () => {
-      const frame = anim.frames[this._portraitAnimIndex];
-      const dur = anim.durationsMs?.[this._portraitAnimIndex] ?? 500;
-      this.portraitEl.src = `assets/portrait/${frame}.png`;
+    const playFrame = () => {
+      const frameName = anim.frames[this._portraitAnimIndex];
+      const duration = anim.durationsMs?.[this._portraitAnimIndex] ?? 500;
+
+      this.portraitEl.src = `assets/portrait/${frameName}.png`;
 
       this._portraitAnimIndex++;
+
       if(this._portraitAnimIndex >= anim.frames.length){
-        if(anim.loop) this._portraitAnimIndex = 0;
-        else return;
+        if(anim.loop){
+          this._portraitAnimIndex = 0;
+        }else{
+          return;
+        }
       }
-      this._portraitAnimTimer = setTimeout(play, dur);
+
+      this._portraitAnimTimer = setTimeout(playFrame, duration);
     };
 
-    play();
+    playFrame();
   }
 
   setPortrait(emotion){
@@ -199,55 +349,19 @@ export class HudEngine {
     this.portraitEl.src = `assets/portrait/${emotion}.png`;
   }
 
-  /* ---------------- STATUS ICON ---------------- */
-
-  _stopStatusAnim(){
-    if(this._statusAnimTimer){
-      clearTimeout(this._statusAnimTimer);
-      this._statusAnimTimer = null;
-    }
-  }
-
-  _playStatusAnim(anim){
-    this._stopStatusAnim();
-    if(!anim?.frames?.length) return;
-
-    this._statusAnimIndex = 0;
-    this.statusIconEl.style.display = "block";
-
-    const play = () => {
-      const frame = anim.frames[this._statusAnimIndex];
-      const dur = anim.durationsMs?.[this._statusAnimIndex] ?? 400;
-
-      this.statusIconEl.src = `assets/icons/${frame}.png`;
-
-      this._statusAnimIndex++;
-      if(this._statusAnimIndex >= anim.frames.length){
-        if(anim.loop) this._statusAnimIndex = 0;
-        else return;
-      }
-
-      this._statusAnimTimer = setTimeout(play, dur);
-    };
-
-    play();
-  }
+  /* ---------------- Status Icon ---------------- */
 
   setStatusIcon(iconKey){
-    this._stopStatusAnim();
-    this._statusAnimSig = null;
-
     if(!iconKey){
       this.statusIconEl.style.display = "none";
       this.statusIconEl.removeAttribute("src");
       return;
     }
-
     this.statusIconEl.src = `assets/icons/${iconKey}.png`;
     this.statusIconEl.style.display = "block";
   }
 
-  /* ---------------- STATE ---------------- */
+  /* ---------------- State ---------------- */
 
   setState(state){
     this.state = state || {};
@@ -258,33 +372,24 @@ export class HudEngine {
     this.dialogueEl.textContent = dlg[this.dialogueLang] || "";
 
     // portrait
-    if(this.state.portraitAnim){
+    if (this.state.portraitAnim){
       const sig = this._makeAnimSig(this.state.portraitAnim);
       if(sig !== this._portraitAnimSig){
         this._portraitAnimSig = sig;
+        this._lastEmotion = this.state.emotion || null;
         this._playPortraitAnim(this.state.portraitAnim);
       }
-    } else if(this.state.emotion){
+    } else if (this.state.emotion) {
       if(this.state.emotion !== this._lastEmotion){
         this._lastEmotion = this.state.emotion;
         this.setPortrait(this.state.emotion);
       }
     }
 
-    // 🔥 status icon anim
-    if(this.state.statusIconAnim){
-      const sig = this._makeAnimSig(this.state.statusIconAnim);
-      if(sig !== this._statusAnimSig){
-        this._statusAnimSig = sig;
-        this._playStatusAnim(this.state.statusIconAnim);
-      }
-    } else {
-      if(this.state.statusIcon !== this._lastStatusIcon){
-        this._lastStatusIcon = this.state.statusIcon;
-        this.setStatusIcon(this.state.statusIcon);
-      }
-    }
+    // status icon
+    this.setStatusIcon(this.state.statusIcon);
 
+    // in room
     this._renderInRoom(this.state.inRoom || []);
   }
 
@@ -304,12 +409,17 @@ export class HudEngine {
 
     list.slice(0, slots.length).forEach((id,i)=>{
       const s = slots[i];
+      const w = (s.w/100) * r.width;
+      const h = (s.h/100) * r.height;
+
       const card = el("img");
       card.src = `assets/characters/${id}.png`;
-      card.style.width = (s.w/100)*r.width + "px";
-      card.style.height = (s.h/100)*r.height + "px";
+      card.style.width = w + "px";
+      card.style.height = h + "px";
       card.style.objectFit = "contain";
       card.style.borderRadius = "8px";
+      card.style.userSelect = "none";
+
       this.inRoomWrap.appendChild(card);
     });
   }

@@ -5,6 +5,9 @@
     {
       "time": "06:30",
       "state": {
+        "profileCardSrc": "assets/cards/profile_card.png",
+        "scheduleCardSrc": "assets/cards/schedule_card.png",
+
         "emotion": "normal",
         "portraitAnim": {
           "frames": ["normal_1", "normal_2"],
@@ -29,6 +32,9 @@
     {
       "time": "18:10",
       "state": {
+        "profileCardSrc": "assets/cards/profile_card.png",
+        "scheduleCardSrc": "assets/cards/schedule_card.png",
+
         "emotion": "normal",
         "portraitAnim": {
           "frames": ["normal_1", "normal_2"],
