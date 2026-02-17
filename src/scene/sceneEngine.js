@@ -8,7 +8,7 @@ export class SceneEngine {
     this.sky = null;
     this.sceneRectPx = null;
 
-    // ✅ NEW: reuse mask graphic
+    // reuse mask graphic (กันสะสม)
     this._maskG = null;
   }
 
@@ -21,7 +21,10 @@ export class SceneEngine {
     };
   }
 
-  async initSky(urls){
+  // ✅ รองรับ 2 แบบ:
+  // 1) initSky([urls]) แบบเดิม
+  // 2) initSky({ urls, keyframes }) แบบใหม่
+  async initSky(arg){
     if(!this.app){
       this.app = new PIXI.Application();
       await this.app.init({
@@ -34,7 +37,12 @@ export class SceneEngine {
     }
 
     this.sky = new SkyManager(this.app.stage);
-    await this.sky.load(urls);
+
+    if(Array.isArray(arg)){
+      await this.sky.load({ urls: arg });
+    }else{
+      await this.sky.load(arg);
+    }
   }
 
   resize(){
@@ -48,7 +56,7 @@ export class SceneEngine {
 
     this.sceneRectPx = this._percentRectToPx(this.layout.sceneRect, w, h);
 
-    // ✅ mask เฉพาะพื้นที่สีเทา (reuse ไม่สร้างใหม่ทุกครั้ง)
+    // mask เฉพาะพื้นที่ scene (reuse)
     if(!this._maskG){
       this._maskG = new PIXI.Graphics();
       this.app.stage.addChild(this._maskG);

@@ -10,33 +10,45 @@ export class SkyManager {
 
     this.stage.addChild(this.a, this.b);
 
-    this.currentIndex = 0;     // committed index (หลัง fade เสร็จ)
-    this.targetIndex = 0;      // index ที่กำลังจะไป
-    this.fadeStart = 0;
-    this.fadeDurationMs = 90_000; // 90 วิ (ปรับได้)
     this.rect = { x:0, y:0, w:100, h:100 };
 
-    // ✅ NEW: กัน fade ซ้อน/เริ่มซ้ำ
+    // --- old discrete-fade mode (ยังอยู่) ---
+    this.currentIndex = 0;
+    this.targetIndex = 0;
+    this.fadeStart = 0;
+    this.fadeDurationMs = 90_000;
     this.isFading = false;
     this._fadeToken = 0;
+
+    // --- NEW keyframe mode ---
+    this.mode = "discrete"; // "keyframes" | "discrete"
+    this.keyframes = [];    // [{ minute, texIndex }]
   }
 
-  async load(urls){
-    this.textures = await Promise.all(
-      urls.map(u => PIXI.Assets.load(u))
-    );
+  async load({ urls, keyframes = null, mode = null }){
+    // โหลด texture
+    this.textures = await Promise.all(urls.map(u => PIXI.Assets.load(u)));
 
-    // ✅ สำคัญ: ตั้ง sky ให้ตรงเวลาปัจจุบันทันที
+    // ตั้งโหมด
+    if(mode) this.mode = mode;
+    if(keyframes?.length){
+      this.mode = "keyframes";
+      this._buildKeyframes(keyframes, urls);
+    }
+
+    // set initial sky correctly at first frame
     const now = new Date();
-    const idx = this._timeToIndex(now);
-
-    this.currentIndex = idx;
-    this.targetIndex = idx;
-
-    this.a.texture = this.textures[idx];
-    this.b.texture = this.textures[idx];
-
-    // cover จะถูกเรียกจาก resizeToRect() ตอน scene.resize()
+    if(this.mode === "keyframes"){
+      this._applyKeyframeBlend(now); // ตั้งให้ตรงเวลาปัจจุบันทันที
+    }else{
+      const idx = this._timeToIndex(now);
+      this.currentIndex = idx;
+      this.targetIndex = idx;
+      this.a.texture = this.textures[idx];
+      this.b.texture = this.textures[idx];
+      this.a.alpha = 1;
+      this.b.alpha = 0;
+    }
   }
 
   resizeToRect(rect){
@@ -58,32 +70,91 @@ export class SkyManager {
     sprite.y = rect.y + (rect.h - th * s) / 2;
   }
 
+  // ---------- NEW: keyframes ----------
+  _parseTimeToMinute(str){
+    const [hh, mm] = str.split(":").map(n => parseInt(n, 10));
+    return (hh * 60) + (mm || 0);
+  }
+
+  _buildKeyframes(keyframes, urls){
+    // keyframes: [{ time:"HH:MM", src:"./assets/sky/xxx.png" }]
+    // map src -> index in urls
+    const map = new Map();
+    urls.forEach((u, i)=> map.set(u, i));
+
+    this.keyframes = keyframes
+      .map(k => ({
+        minute: this._parseTimeToMinute(k.time),
+        texIndex: map.get(k.src)
+      }))
+      .filter(k => typeof k.texIndex === "number")
+      .sort((a,b)=>a.minute-b.minute);
+  }
+
+  _smoothstep(t){
+    return t*t*(3-2*t);
+  }
+
+  _applyKeyframeBlend(now){
+    if(!this.keyframes.length) return;
+
+    const m = now.getHours()*60 + now.getMinutes() + now.getSeconds()/60;
+
+    // หา keyframe ก่อนหน้า + ถัดไป (wrap ข้ามวัน)
+    const kfs = this.keyframes;
+
+    let i1 = kfs.findIndex(k => k.minute > m);
+    if(i1 === -1) i1 = 0;               // wrap ไปตัวแรกของวันถัดไป
+    const i0 = (i1 - 1 + kfs.length) % kfs.length;
+
+    const k0 = kfs[i0];
+    const k1 = kfs[i1];
+
+    const m0 = k0.minute;
+    const m1 = (k1.minute > m0) ? k1.minute : (k1.minute + 1440); // wrap
+    const mm = (m >= m0) ? m : (m + 1440);
+
+    const t = (mm - m0) / (m1 - m0);
+    const s = this._smoothstep(Math.min(1, Math.max(0, t)));
+
+    // set textures
+    this.a.texture = this.textures[k0.texIndex];
+    this.b.texture = this.textures[k1.texIndex];
+    this._cover(this.a, this.rect);
+    this._cover(this.b, this.rect);
+
+    // blend
+    this.a.alpha = 1 - s;
+    this.b.alpha = s;
+  }
+
+  // ---------- old discrete mode ----------
   _timeToIndex(now){
     const h = now.getHours() + now.getMinutes()/60;
-
-    if(h >= 5.5 && h < 8) return 0;      // sunrise
-    if(h >= 8 && h < 17.5) return 1;     // day
-    if(h >= 17.5 && h < 19) return 2;    // sunset
-    if(h >= 19 && h < 22.5) return 3;    // early night
-    return 4;                             // deep night
+    if(h >= 5.5 && h < 8) return 0;
+    if(h >= 8 && h < 17.5) return 1;
+    if(h >= 17.5 && h < 19) return 2;
+    if(h >= 19 && h < 22.5) return 3;
+    return 4;
   }
 
   updateByTime(now){
+    if(this.mode === "keyframes"){
+      // continuous blend (no RAF fade needed)
+      this._applyKeyframeBlend(now);
+      return;
+    }
+
+    // discrete mode (ของเดิม + fix กันซ้ำ)
     const idx = this._timeToIndex(now);
 
-    // ✅ ถ้าเหมือนเดิม ไม่ต้องทำอะไร
-    // - ถ้ากำลัง fade อยู่ ให้เทียบกับ targetIndex (กันเริ่มซ้ำทุกเฟรม)
-    // - ถ้าไม่ได้ fade ให้เทียบกับ currentIndex (ปกติ)
     if(this.isFading){
       if(idx === this.targetIndex) return;
-      // ถ้าเวลาข้ามไปช่วงใหม่ระหว่าง fade (โอกาสน้อยมาก) -> ข้ามไป retarget รอบนี้
-      // (ปลอดภัยสุด: รอให้ fade เดิมจบก่อน แล้วค่อยเปลี่ยนใน tick ถัดไป)
       return;
     } else {
       if(idx === this.currentIndex) return;
     }
 
-    // ✅ เริ่ม fade (ครั้งเดียว)
     this.isFading = true;
     const token = ++this._fadeToken;
 
@@ -97,14 +168,11 @@ export class SkyManager {
     this.a.alpha = 1;
 
     const animateFade = () => {
-      // ✅ ถ้ามี fade ใหม่กว่าเข้ามา (กันซ้อน) ให้หยุดตัวเก่า
       if(token !== this._fadeToken) return;
 
       const t = (performance.now() - this.fadeStart) / this.fadeDurationMs;
       const clamped = Math.min(1, t);
-
-      // smoothstep
-      const s = clamped * clamped * (3 - 2 * clamped);
+      const s = this._smoothstep(clamped);
 
       this.b.alpha = s;
       this.a.alpha = 1 - s;
@@ -112,7 +180,6 @@ export class SkyManager {
       if(clamped < 1){
         requestAnimationFrame(animateFade);
       } else {
-        // commit
         this.currentIndex = this.targetIndex;
         this.a.texture = this.textures[this.currentIndex];
         this._cover(this.a, this.rect);

@@ -89,13 +89,17 @@ async function boot(){
   hud.setState(story.getCurrentState());
   hud.enableDialogueToggle(() => hud.toggleDialogueLang());
 
-  await scene.initSky([
-    "./assets/sky/sky_01.png",
-    "./assets/sky/sky_02.png",
-    "./assets/sky/sky_03.png",
-    "./assets/sky/sky_04.png",
-    "./assets/sky/sky_05.png"
-  ]);
+const skyCfg = await loadJSON("./data/sky_config.json");
+
+// ดึง urls ไม่ให้ซ้ำ
+const urls = [...new Set(skyCfg.keyframes.map(k => k.src))];
+
+await scene.initSky({
+  urls,
+  keyframes: skyCfg.keyframes,
+  mode: "keyframes"
+});
+
 
   function tick(){
     const now = new Date();
