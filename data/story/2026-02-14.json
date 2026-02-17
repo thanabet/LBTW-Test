@@ -37,7 +37,7 @@
         },
         "statusIconAnim": {
           "frames": ["book_1", "book_2", "book_3"],
-          "durationsMs": [700, 110, 110],
+          "durationsMs": [2000, 110, 110],
           "loop": true
         },
         "statusIcon": "book",
@@ -52,4 +52,5 @@
     }
   ]
 }
+
 
