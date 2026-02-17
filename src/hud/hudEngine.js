@@ -148,29 +148,34 @@ export class HudEngine {
       const style = el("style");
       style.id = "hud-modal-style";
       style.textContent = `
-        .hudModalBackdrop {
-          opacity: 0;
-          transition: opacity 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
-          will-change: opacity;
-        }
-        .hudModalCard {
-          transform: translateY(10px) scale(0.95);
-          opacity: 0;
-          transition:
-            transform 220ms cubic-bezier(0.2, 0.85, 0.25, 1),
-            opacity 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
-          will-change: transform, opacity;
-        }
-        .hudModalBackdrop.show { opacity: 1; }
-        .hudModalCard.show {
-          transform: translateY(0) scale(1);
-          opacity: 1;
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .hudModalBackdrop, .hudModalCard {
-            transition: none !important;
-          }
-        }
+.hudModalBackdrop {
+  opacity: 0;
+  transition: opacity 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: opacity;
+}
+
+.hudModalCard {
+  transform: translateY(18px) scale(0.94);
+  opacity: 0;
+  transition:
+    transform 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform, opacity;
+}
+
+.hudModalBackdrop.show { opacity: 1; }
+
+.hudModalCard.show {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hudModalBackdrop, .hudModalCard {
+    transition: none !important;
+  }
+}
+
       `;
       document.head.appendChild(style);
     }
@@ -500,3 +505,4 @@ export class HudEngine {
     });
   }
 }
+
