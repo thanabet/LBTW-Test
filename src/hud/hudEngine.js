@@ -280,7 +280,7 @@ export class HudEngine {
     this._modalClosingTimer = setTimeout(() => {
       this.modalBackdrop.style.display = "none";
       this._modalIsOpen = false;
-    }, 240);
+    }, 460);
   }
 
   /* ---------- LAYOUT ---------- */
@@ -505,4 +505,5 @@ export class HudEngine {
     });
   }
 }
+
 
