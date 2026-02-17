@@ -49,7 +49,7 @@ export class HudEngine {
     this._statusAnimSig = null;
     this._lastStatusIcon = null;
 
-    /* ---------- NEW: logo hotspot ---------- */
+    // logo hotspot
     this.logoHotspotEl = el("div");
     this.logoHotspotEl.style.position = "absolute";
     this.logoHotspotEl.style.background = "transparent";
@@ -75,7 +75,7 @@ export class HudEngine {
       e.style.userSelect = "none";
     }
 
-    // ทำให้ปฏิทินคลิกได้
+    // calendar clickable
     this.monthEl.style.cursor = "pointer";
     this.dayEl.style.cursor = "pointer";
 
@@ -98,15 +98,16 @@ export class HudEngine {
     this.inRoomWrap.style.display = "flex";
     this.inRoomWrap.style.gap = "0.5rem";
 
-    /* ---------- NEW: modal system ---------- */
+    // modal system
     this._initModal();
 
-    /* ---------- NEW: click events ---------- */
+    // click: portrait -> profile card
     this.portraitEl.addEventListener("click", () => {
       const src = this.state.profileCardSrc || "assets/cards/profile_card.png";
       this._openModal(src);
     });
 
+    // click: calendar -> schedule card
     const openSchedule = () => {
       const src = this.state.scheduleCardSrc || "assets/cards/schedule_card.png";
       this._openModal(src);
@@ -114,6 +115,7 @@ export class HudEngine {
     this.monthEl.addEventListener("click", openSchedule);
     this.dayEl.addEventListener("click", openSchedule);
 
+    // click: logo -> intromie
     this.logoHotspotEl.addEventListener("click", () => {
       if(this.layout.intromieUrl){
         window.open(this.layout.intromieUrl, "_blank", "noopener,noreferrer");
@@ -181,6 +183,18 @@ export class HudEngine {
 
   _closeModal(){
     this.modalBackdrop.style.display="none";
+  }
+
+  // ✅ NEW: หา path การ์ดของตัวละครใน in-room
+  _getCharacterCardSrc(id){
+    // 1) ถ้าอยาก override รายคนจาก story:
+    // state.characterCardSrc = { "army": "...png", "fai": "...png" }
+    const map = this.state.characterCardSrc || null;
+    if(map && map[id]) return map[id];
+
+    // 2) default convention (ไม่ต้องแก้ json ก็ใช้ได้เลย)
+    // ใส่ไฟล์ไว้ที่ assets/cards/characters/<id>.png
+    return `assets/cards/characters/${id}.png`;
   }
 
   /* ---------- LAYOUT ---------- */
@@ -381,6 +395,7 @@ export class HudEngine {
     this.inRoomWrap.innerHTML="";
     const slots=this.layout.inRoom.slots;
     const r=this._stageRect();
+
     list.slice(0,slots.length).forEach((id,i)=>{
       const s=slots[i];
       const card=el("img");
@@ -389,6 +404,16 @@ export class HudEngine {
       card.style.height=(s.h/100)*r.height+"px";
       card.style.objectFit="contain";
       card.style.borderRadius="8px";
+      card.style.userSelect="none";
+
+      // ✅ NEW: click in-room card -> open that character card
+      card.style.cursor = "pointer";
+      card.style.pointerEvents = "auto";
+      card.addEventListener("click", () => {
+        const src = this._getCharacterCardSrc(id);
+        this._openModal(src);
+      });
+
       this.inRoomWrap.appendChild(card);
     });
   }
