@@ -5,12 +5,12 @@
     {
       "time": "06:30",
       "state": {
-  "emotion": "normal",
-  "portraitFrames": 2,
-  "portraitFps": 4
 "statusIcon": "book",
         "status": "STATUS : WAKE UP",
         "mood": "MOOD : SLEEPY",
+  "emotion": "normal",
+  "portraitFrames": 2,
+  "portraitFps": 4
         "dialogue": { "th": "เช้านี้อากาศดี…", "en": "Nice morning..." },
         "inRoom": ["army", "fai"]
       }
@@ -18,12 +18,12 @@
     {
       "time": "18:10",
       "state": {
-  "emotion": "normal",
-  "portraitFrames": 2,
-  "portraitFps": 4
 "statusIcon": "book",
         "status": "STATUS : READING",
         "mood": "MOOD : FOCUSED",
+  "emotion": "normal",
+  "portraitFrames": 2,
+  "portraitFps": 4
         "dialogue": { "th": "พรุ่งนี้ต้องอ่านให้จบ…", "en": "I must finish it..." },
         "inRoom": ["army", "fai", "poon"]
       }
