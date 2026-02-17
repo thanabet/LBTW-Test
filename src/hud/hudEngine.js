@@ -31,9 +31,13 @@ export class HudEngine {
     this.portraitEl.style.pointerEvents = "auto";
     this.portraitEl.style.cursor = "pointer";
 
-    // 🔥 NEW: portrait animation timer
+    // portrait animation
     this._portraitAnimTimer = null;
     this._portraitAnimIndex = 0;
+
+    // ✅ NEW: guard กัน restart animation ทุก tick
+    this._portraitAnimSig = null;
+    this._lastEmotion = null;
 
     // status icon
     this.statusIconEl = el("img");
@@ -160,7 +164,6 @@ export class HudEngine {
     this.minHand.style.transform  = `rotate(${minDeg}deg)`;
   }
 
-  // 🔥 STOP animation safely
   _stopPortraitAnim(){
     if(this._portraitAnimTimer){
       clearTimeout(this._portraitAnimTimer);
@@ -168,10 +171,15 @@ export class HudEngine {
     }
   }
 
-  // 🔥 play animation with custom duration per frame
+  _makeAnimSig(anim){
+    const frames = (anim.frames || []).join("|");
+    const durs = (anim.durationsMs || []).join(",");
+    const loop = anim.loop ? "1" : "0";
+    return `${frames}::${durs}::${loop}`;
+  }
+
   _playPortraitAnim(anim){
     this._stopPortraitAnim();
-
     if(!anim?.frames?.length) return;
 
     this._portraitAnimIndex = 0;
@@ -200,6 +208,7 @@ export class HudEngine {
 
   setPortrait(emotion){
     this._stopPortraitAnim();
+    this._portraitAnimSig = null; // ✅ reset anim sig
     this.portraitEl.src = `assets/portrait/${emotion}.png`;
   }
 
@@ -221,11 +230,22 @@ export class HudEngine {
     const dlg = this.state.dialogue || {};
     this.dialogueEl.textContent = dlg[this.dialogueLang] || "";
 
-    // 🔥 portrait logic
+    // ✅ portrait logic (กัน restart)
     if (this.state.portraitAnim){
-      this._playPortraitAnim(this.state.portraitAnim);
+      const sig = this._makeAnimSig(this.state.portraitAnim);
+      if(sig !== this._portraitAnimSig){
+        this._portraitAnimSig = sig;
+        this._lastEmotion = this.state.emotion || null;
+        this._playPortraitAnim(this.state.portraitAnim);
+      }
+      // ถ้า sig เดิม -> ไม่ทำอะไร ปล่อยให้ anim วิ่งต่อ
     } else if (this.state.emotion) {
-      this.setPortrait(this.state.emotion);
+      if(this.state.emotion !== this._lastEmotion){
+        this._lastEmotion = this.state.emotion;
+        this.setPortrait(this.state.emotion);
+      }
+    } else {
+      // ไม่มี emotion/anim -> ไม่เปลี่ยนอะไร
     }
 
     this.setStatusIcon(this.state.statusIcon);
