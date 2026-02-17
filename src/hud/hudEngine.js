@@ -11,6 +11,9 @@ export class HudEngine {
     this.state = {};
     this.dialogueLang = "th";
 
+    // ✅ FIX: ให้ HUD overlay รับคลิกได้ (กันโดน CSS pointer-events:none ทับ)
+    this.root.style.pointerEvents = "auto";
+
     this.stageEl = document.getElementById("stage");
 
     this.monthEl = el("div");
@@ -28,7 +31,7 @@ export class HudEngine {
     this.portraitEl.style.position = "absolute";
     this.portraitEl.style.objectFit = "contain";
     this.portraitEl.style.userSelect = "none";
-    this.portraitEl.style.pointerEvents = "auto";
+    this.portraitEl.style.pointerEvents = "auto"; // ✅ clickable
     this.portraitEl.style.cursor = "pointer";
 
     this._portraitAnimTimer = null;
@@ -53,7 +56,7 @@ export class HudEngine {
     this.logoHotspotEl = el("div");
     this.logoHotspotEl.style.position = "absolute";
     this.logoHotspotEl.style.background = "transparent";
-    this.logoHotspotEl.style.pointerEvents = "auto";
+    this.logoHotspotEl.style.pointerEvents = "auto"; // ✅ clickable
     this.logoHotspotEl.style.cursor = "pointer";
     this.logoHotspotEl.style.display = "none";
 
@@ -73,6 +76,8 @@ export class HudEngine {
       e.style.color = "#2a2a2a";
       e.style.fontWeight = "700";
       e.style.userSelect = "none";
+      // ✅ FIX: ให้ element overlay รับคลิกได้ (โดยเฉพาะ month/day/dialogue)
+      e.style.pointerEvents = "auto";
     }
 
     // ทำให้ปฏิทินคลิกได้
@@ -97,6 +102,7 @@ export class HudEngine {
     this.inRoomWrap.style.position = "absolute";
     this.inRoomWrap.style.display = "flex";
     this.inRoomWrap.style.gap = "0.5rem";
+    this.inRoomWrap.style.pointerEvents = "auto"; // ✅ clickable children
 
     /* ---------- modal system ---------- */
     this._initModal();
@@ -390,7 +396,7 @@ export class HudEngine {
       card.style.objectFit="contain";
       card.style.borderRadius="8px";
 
-      // NEW: click to open character info card (popup)
+      // click to open character info card
       card.style.cursor="pointer";
       card.style.pointerEvents="auto";
       card.addEventListener("click", ()=>{
