@@ -31,8 +31,8 @@
       "state": {
         "emotion": "normal",
         "portraitAnim": {
-          "frames": ["normal_1", "normal_2", "normal_3"],
-          "durationsMs": [1200, 90, 150],
+          "frames": ["normal_1", "normal_2"],
+          "durationsMs": [1200, 90],
           "loop": true
         },
         "statusIconAnim": {
@@ -52,3 +52,4 @@
     }
   ]
 }
+
