@@ -8,7 +8,12 @@
         "emotion": "normal",
         "portraitAnim": {
           "frames": ["normal_1", "normal_2"],
-          "durationsMs": [1500, 920],
+          "durationsMs": [1500, 120],
+          "loop": true
+        },
+        "statusIconAnim": {
+          "frames": ["book_1", "book_2"],
+          "durationsMs": [800, 120],
           "loop": true
         },
         "statusIcon": "book",
@@ -26,8 +31,13 @@
       "state": {
         "emotion": "normal",
         "portraitAnim": {
-          "frames": ["normal_1", "normal_2"],
-          "durationsMs": [3200, 100],
+          "frames": ["normal_1", "normal_2", "normal_3"],
+          "durationsMs": [1200, 90, 150],
+          "loop": true
+        },
+        "statusIconAnim": {
+          "frames": ["book_1", "book_2"],
+          "durationsMs": [700, 110],
           "loop": true
         },
         "statusIcon": "book",
@@ -42,4 +52,3 @@
     }
   ]
 }
-
