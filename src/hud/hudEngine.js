@@ -4,12 +4,12 @@ function el(tag){
   return document.createElement(tag);
 }
 
-// ✅ robust tap handler (iOS-friendly)
+// iOS-friendly tap handler (keeps existing behavior stable)
 function onTap(target, fn){
   let last = 0;
   const run = (e) => {
     const now = Date.now();
-    if (now - last < 350) return; // กันยิงซ้ำ
+    if (now - last < 350) return; // prevent double-fire
     last = now;
     try { fn(e); } catch(_) {}
   };
@@ -89,7 +89,7 @@ export class HudEngine {
       e.style.userSelect = "none";
     }
 
-    // ✅ calendar clickable
+    // calendar clickable
     this.monthEl.style.cursor = "pointer";
     this.dayEl.style.cursor = "pointer";
     this.monthEl.style.pointerEvents = "auto";
@@ -115,21 +115,16 @@ export class HudEngine {
     this.inRoomWrap.style.gap = "0.5rem";
     this.inRoomWrap.style.pointerEvents = "auto";
 
-    // modal system
+    // modal
     this._initModal();
 
-    // ✅ tiny toast (no console needed)
-    this._initToast();
-
-    // tap events
+    // interactions
     onTap(this.portraitEl, () => {
-      this._toast("portrait");
       const src = this.state.profileCardSrc || "assets/cards/profile_card.png";
       this._openModal(src);
     });
 
     const openSchedule = () => {
-      this._toast("calendar");
       const src = this.state.scheduleCardSrc || "assets/cards/schedule_card.png";
       this._openModal(src);
     };
@@ -137,7 +132,6 @@ export class HudEngine {
     onTap(this.dayEl, openSchedule);
 
     onTap(this.logoHotspotEl, () => {
-      this._toast("logo");
       if(this.layout.intromieUrl){
         window.open(this.layout.intromieUrl, "_blank", "noopener,noreferrer");
       }
@@ -146,39 +140,43 @@ export class HudEngine {
     this.setPortrait("normal");
   }
 
-  /* ---------- TOAST ---------- */
-  _initToast(){
-    this.toastEl = el("div");
-    Object.assign(this.toastEl.style,{
-      position:"fixed",
-      left:"50%",
-      top:"14px",
-      transform:"translateX(-50%)",
-      padding:"8px 12px",
-      borderRadius:"999px",
-      background:"rgba(0,0,0,0.7)",
-      color:"#fff",
-      fontSize:"12px",
-      zIndex:"1000000",
-      display:"none",
-      pointerEvents:"none"
-    });
-    document.body.appendChild(this.toastEl);
-    this._toastTimer = null;
-  }
+  /* ---------- MODAL (Smooth + Premium) ---------- */
 
-  _toast(msg){
-    this.toastEl.textContent = msg;
-    this.toastEl.style.display = "block";
-    clearTimeout(this._toastTimer);
-    this._toastTimer = setTimeout(()=> {
-      this.toastEl.style.display = "none";
-    }, 700);
-  }
-
-  /* ---------- MODAL ---------- */
   _initModal(){
+    // inject CSS once (safe, self-contained, no dependency on external css)
+    if(!document.getElementById("hud-modal-style")){
+      const style = el("style");
+      style.id = "hud-modal-style";
+      style.textContent = `
+        .hudModalBackdrop {
+          opacity: 0;
+          transition: opacity 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+          will-change: opacity;
+        }
+        .hudModalCard {
+          transform: translateY(10px) scale(0.95);
+          opacity: 0;
+          transition:
+            transform 220ms cubic-bezier(0.2, 0.85, 0.25, 1),
+            opacity 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+          will-change: transform, opacity;
+        }
+        .hudModalBackdrop.show { opacity: 1; }
+        .hudModalCard.show {
+          transform: translateY(0) scale(1);
+          opacity: 1;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .hudModalBackdrop, .hudModalCard {
+            transition: none !important;
+          }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
     this.modalBackdrop = el("div");
+    this.modalBackdrop.className = "hudModalBackdrop";
     Object.assign(this.modalBackdrop.style,{
       position:"fixed",
       inset:"0",
@@ -191,8 +189,13 @@ export class HudEngine {
     });
 
     this.modalCard = el("div");
-    this.modalCard.style.position="relative";
-    this.modalCard.style.pointerEvents="auto";
+    this.modalCard.className = "hudModalCard";
+    Object.assign(this.modalCard.style,{
+      position:"relative",
+      pointerEvents:"auto",
+      maxWidth:"92vw",
+      maxHeight:"88vh"
+    });
 
     this.modalImg = el("img");
     Object.assign(this.modalImg.style,{
@@ -200,7 +203,9 @@ export class HudEngine {
       maxHeight:"88vh",
       borderRadius:"16px",
       display:"block",
-      pointerEvents:"none"
+      pointerEvents:"none",
+      userSelect:"none",
+      WebkitUserSelect:"none"
     });
 
     this.modalClose = el("button");
@@ -218,29 +223,65 @@ export class HudEngine {
       fontSize:"18px",
       pointerEvents:"auto"
     });
+    this.modalClose.type = "button";
     this.modalClose.textContent="✕";
 
     this.modalCard.append(this.modalImg,this.modalClose);
     this.modalBackdrop.appendChild(this.modalCard);
     document.body.appendChild(this.modalBackdrop);
 
+    // close interactions
     onTap(this.modalClose, ()=>this._closeModal());
     onTap(this.modalBackdrop, (e)=>{
       if(e.target===this.modalBackdrop) this._closeModal();
     });
+
+    this._modalClosingTimer = null;
+    this._modalIsOpen = false;
   }
 
   _openModal(src){
-    this.modalImg.src=src;
-    this.modalBackdrop.style.display="flex";
+    // cancel pending close timer
+    if(this._modalClosingTimer){
+      clearTimeout(this._modalClosingTimer);
+      this._modalClosingTimer = null;
+    }
+
+    this.modalImg.src = src;
+    this.modalBackdrop.style.display = "flex";
+
+    // force initial state (hidden) then animate in next frame
+    this.modalBackdrop.classList.remove("show");
+    this.modalCard.classList.remove("show");
+
+    requestAnimationFrame(() => {
+      this.modalBackdrop.classList.add("show");
+      this.modalCard.classList.add("show");
+      this._modalIsOpen = true;
+    });
   }
 
   _closeModal(){
-    this.modalBackdrop.style.display="none";
+    if(!this._modalIsOpen) {
+      this.modalBackdrop.style.display = "none";
+      return;
+    }
+
+    // animate out
+    this.modalBackdrop.classList.remove("show");
+    this.modalCard.classList.remove("show");
+
+    // after animation, hide completely
+    this._modalClosingTimer = setTimeout(() => {
+      this.modalBackdrop.style.display = "none";
+      this._modalIsOpen = false;
+    }, 240);
   }
 
   /* ---------- LAYOUT ---------- */
+
   resize(){ this._applyLayout(); }
+
   _stageRect(){ return this.stageEl.getBoundingClientRect(); }
 
   _applyRectPx(elm, rectPct){
@@ -295,7 +336,7 @@ export class HudEngine {
     this.minHand.style.top=`${cy-minLen*0.9}px`;
   }
 
-  /* ---------- ORIGINAL LOGIC (UNCHANGED) ---------- */
+  /* ---------- TIME / TEXT ---------- */
 
   setCalendar(now){
     const m=["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
@@ -308,6 +349,8 @@ export class HudEngine {
     this.hourHand.style.transform=`rotate(${hourDeg}deg)`;
     this.minHand.style.transform=`rotate(${minDeg}deg)`;
   }
+
+  /* ---------- PORTRAIT ANIM ---------- */
 
   _stopPortraitAnim(){
     if(this._portraitAnimTimer){
@@ -346,6 +389,8 @@ export class HudEngine {
     this.portraitEl.src=`assets/portrait/${emotion}.png`;
   }
 
+  /* ---------- STATUS ICON ANIM ---------- */
+
   _stopStatusAnim(){
     if(this._statusAnimTimer){
       clearTimeout(this._statusAnimTimer);
@@ -383,6 +428,8 @@ export class HudEngine {
     this.statusIconEl.src=`assets/icons/${iconKey}.png`;
     this.statusIconEl.style.display="block";
   }
+
+  /* ---------- STATE ---------- */
 
   setState(state){
     this.state=state||{};
@@ -446,7 +493,6 @@ export class HudEngine {
       card.style.pointerEvents="auto";
 
       onTap(card, ()=>{
-        this._toast(`inRoom:${id}`);
         this._openModal(`assets/cards/characters/${id}.png`);
       });
 
