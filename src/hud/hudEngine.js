@@ -31,21 +31,24 @@ export class HudEngine {
     this.portraitEl.style.pointerEvents = "auto";
     this.portraitEl.style.cursor = "pointer";
 
-    // portrait animation
     this._portraitAnimTimer = null;
     this._portraitAnimIndex = 0;
-
-    // ✅ NEW: guard กัน restart animation ทุก tick
     this._portraitAnimSig = null;
     this._lastEmotion = null;
 
-    // status icon
+    // 🔥 status icon
     this.statusIconEl = el("img");
     this.statusIconEl.style.position = "absolute";
     this.statusIconEl.style.objectFit = "contain";
     this.statusIconEl.style.userSelect = "none";
     this.statusIconEl.style.pointerEvents = "none";
     this.statusIconEl.style.display = "none";
+
+    // 🔥 NEW: status icon animation
+    this._statusAnimTimer = null;
+    this._statusAnimIndex = 0;
+    this._statusAnimSig = null;
+    this._lastStatusIcon = null;
 
     this.root.append(
       this.monthEl, this.dayEl,
@@ -96,15 +99,10 @@ export class HudEngine {
 
   _applyRectPx(elm, rectPct){
     const r = this._stageRect();
-    const left = (rectPct.x/100) * r.width;
-    const top  = (rectPct.y/100) * r.height;
-    const w    = (rectPct.w/100) * r.width;
-    const h    = (rectPct.h/100) * r.height;
-
-    elm.style.left = left + "px";
-    elm.style.top  = top  + "px";
-    elm.style.width  = w + "px";
-    elm.style.height = h + "px";
+    elm.style.left   = (rectPct.x/100) * r.width + "px";
+    elm.style.top    = (rectPct.y/100) * r.height + "px";
+    elm.style.width  = (rectPct.w/100) * r.width + "px";
+    elm.style.height = (rectPct.h/100) * r.height + "px";
   }
 
   _applyLayout(){
@@ -116,29 +114,23 @@ export class HudEngine {
     this._applyRectPx(this.moodEl,   L.moodText);
     this._applyRectPx(this.dialogueEl, L.dialogue);
 
-    if (L.portrait) {
-      this._applyRectPx(this.portraitEl, L.portrait);
-    }
-
-    if (L.statusIcon) {
-      this._applyRectPx(this.statusIconEl, L.statusIcon);
-    }
+    if (L.portrait) this._applyRectPx(this.portraitEl, L.portrait);
+    if (L.statusIcon) this._applyRectPx(this.statusIconEl, L.statusIcon);
 
     const slots = L.inRoom.slots;
     if(slots?.length){
-      const first = slots[0];
       const r = this._stageRect();
-      this.inRoomWrap.style.left = ((first.x/100) * r.width) + "px";
-      this.inRoomWrap.style.top  = ((first.y/100) * r.height) + "px";
+      this.inRoomWrap.style.left = (slots[0].x/100)*r.width + "px";
+      this.inRoomWrap.style.top  = (slots[0].y/100)*r.height + "px";
     }
 
     const c = L.clock.center;
     const r = this._stageRect();
-    const cx = (c.x/100) * r.width;
-    const cy = (c.y/100) * r.height;
+    const cx = (c.x/100)*r.width;
+    const cy = (c.y/100)*r.height;
 
-    const hourLen = (L.clock.hourLenPctOfScreenW/100) * window.innerWidth;
-    const minLen  = (L.clock.minLenPctOfScreenW/100) * window.innerWidth;
+    const hourLen = (L.clock.hourLenPctOfScreenW/100)*window.innerWidth;
+    const minLen  = (L.clock.minLenPctOfScreenW/100)*window.innerWidth;
     const t = L.clock.thicknessPx;
 
     this.hourHand.style.width = `${t}px`;
@@ -153,9 +145,9 @@ export class HudEngine {
   }
 
   setCalendar(now){
-    const months = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
-    this.monthEl.textContent = months[now.getMonth()];
-    this.dayEl.textContent = String(now.getDate());
+    const m = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+    this.monthEl.textContent = m[now.getMonth()];
+    this.dayEl.textContent = now.getDate();
   }
 
   setClockHands(now){
@@ -163,6 +155,8 @@ export class HudEngine {
     this.hourHand.style.transform = `rotate(${hourDeg}deg)`;
     this.minHand.style.transform  = `rotate(${minDeg}deg)`;
   }
+
+  /* ---------------- PORTRAIT ---------------- */
 
   _stopPortraitAnim(){
     if(this._portraitAnimTimer){
@@ -172,10 +166,9 @@ export class HudEngine {
   }
 
   _makeAnimSig(anim){
-    const frames = (anim.frames || []).join("|");
-    const durs = (anim.durationsMs || []).join(",");
-    const loop = anim.loop ? "1" : "0";
-    return `${frames}::${durs}::${loop}`;
+    return (anim.frames||[]).join("|") + "::" +
+           (anim.durationsMs||[]).join(",") + "::" +
+           (anim.loop?"1":"0");
   }
 
   _playPortraitAnim(anim){
@@ -184,43 +177,77 @@ export class HudEngine {
 
     this._portraitAnimIndex = 0;
 
-    const playFrame = () => {
-      const frameName = anim.frames[this._portraitAnimIndex];
-      const duration = anim.durationsMs?.[this._portraitAnimIndex] ?? 500;
-
-      this.portraitEl.src = `assets/portrait/${frameName}.png`;
+    const play = () => {
+      const frame = anim.frames[this._portraitAnimIndex];
+      const dur = anim.durationsMs?.[this._portraitAnimIndex] ?? 500;
+      this.portraitEl.src = `assets/portrait/${frame}.png`;
 
       this._portraitAnimIndex++;
-
       if(this._portraitAnimIndex >= anim.frames.length){
-        if(anim.loop){
-          this._portraitAnimIndex = 0;
-        }else{
-          return;
-        }
+        if(anim.loop) this._portraitAnimIndex = 0;
+        else return;
       }
-
-      this._portraitAnimTimer = setTimeout(playFrame, duration);
+      this._portraitAnimTimer = setTimeout(play, dur);
     };
 
-    playFrame();
+    play();
   }
 
   setPortrait(emotion){
     this._stopPortraitAnim();
-    this._portraitAnimSig = null; // ✅ reset anim sig
+    this._portraitAnimSig = null;
     this.portraitEl.src = `assets/portrait/${emotion}.png`;
   }
 
+  /* ---------------- STATUS ICON ---------------- */
+
+  _stopStatusAnim(){
+    if(this._statusAnimTimer){
+      clearTimeout(this._statusAnimTimer);
+      this._statusAnimTimer = null;
+    }
+  }
+
+  _playStatusAnim(anim){
+    this._stopStatusAnim();
+    if(!anim?.frames?.length) return;
+
+    this._statusAnimIndex = 0;
+    this.statusIconEl.style.display = "block";
+
+    const play = () => {
+      const frame = anim.frames[this._statusAnimIndex];
+      const dur = anim.durationsMs?.[this._statusAnimIndex] ?? 400;
+
+      this.statusIconEl.src = `assets/icons/${frame}.png`;
+
+      this._statusAnimIndex++;
+      if(this._statusAnimIndex >= anim.frames.length){
+        if(anim.loop) this._statusAnimIndex = 0;
+        else return;
+      }
+
+      this._statusAnimTimer = setTimeout(play, dur);
+    };
+
+    play();
+  }
+
   setStatusIcon(iconKey){
+    this._stopStatusAnim();
+    this._statusAnimSig = null;
+
     if(!iconKey){
       this.statusIconEl.style.display = "none";
       this.statusIconEl.removeAttribute("src");
       return;
     }
+
     this.statusIconEl.src = `assets/icons/${iconKey}.png`;
     this.statusIconEl.style.display = "block";
   }
+
+  /* ---------------- STATE ---------------- */
 
   setState(state){
     this.state = state || {};
@@ -230,25 +257,34 @@ export class HudEngine {
     const dlg = this.state.dialogue || {};
     this.dialogueEl.textContent = dlg[this.dialogueLang] || "";
 
-    // ✅ portrait logic (กัน restart)
-    if (this.state.portraitAnim){
+    // portrait
+    if(this.state.portraitAnim){
       const sig = this._makeAnimSig(this.state.portraitAnim);
       if(sig !== this._portraitAnimSig){
         this._portraitAnimSig = sig;
-        this._lastEmotion = this.state.emotion || null;
         this._playPortraitAnim(this.state.portraitAnim);
       }
-      // ถ้า sig เดิม -> ไม่ทำอะไร ปล่อยให้ anim วิ่งต่อ
-    } else if (this.state.emotion) {
+    } else if(this.state.emotion){
       if(this.state.emotion !== this._lastEmotion){
         this._lastEmotion = this.state.emotion;
         this.setPortrait(this.state.emotion);
       }
-    } else {
-      // ไม่มี emotion/anim -> ไม่เปลี่ยนอะไร
     }
 
-    this.setStatusIcon(this.state.statusIcon);
+    // 🔥 status icon anim
+    if(this.state.statusIconAnim){
+      const sig = this._makeAnimSig(this.state.statusIconAnim);
+      if(sig !== this._statusAnimSig){
+        this._statusAnimSig = sig;
+        this._playStatusAnim(this.state.statusIconAnim);
+      }
+    } else {
+      if(this.state.statusIcon !== this._lastStatusIcon){
+        this._lastStatusIcon = this.state.statusIcon;
+        this.setStatusIcon(this.state.statusIcon);
+      }
+    }
+
     this._renderInRoom(this.state.inRoom || []);
   }
 
@@ -268,17 +304,12 @@ export class HudEngine {
 
     list.slice(0, slots.length).forEach((id,i)=>{
       const s = slots[i];
-      const w = (s.w/100) * r.width;
-      const h = (s.h/100) * r.height;
-
       const card = el("img");
       card.src = `assets/characters/${id}.png`;
-      card.style.width = w + "px";
-      card.style.height = h + "px";
+      card.style.width = (s.w/100)*r.width + "px";
+      card.style.height = (s.h/100)*r.height + "px";
       card.style.objectFit = "contain";
       card.style.borderRadius = "8px";
-      card.style.userSelect = "none";
-
       this.inRoomWrap.appendChild(card);
     });
   }
