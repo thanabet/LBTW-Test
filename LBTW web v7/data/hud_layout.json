@@ -1,0 +1,42 @@
+{
+  "templateSize": { "w": 1595, "h": 3457 },
+
+  "portrait": { "x": 8.5, "y": 48, "w": 21, "h": 21 },
+"statusIcon": { "x": 33, "y": 60.2, "w": 6, "h": 6 },
+
+
+  "calendar": {
+    "month": { "x": 86, "y": 52, "w": 8, "h": 3.2, "align": "center" },
+    "day":   { "x": 87, "y": 55, "w": 8, "h": 5.0, "align": "center" }
+  },
+
+  "clock": {
+    "center": { "x": 70.5, "y": 54.9 },
+    "hourLenPctOfScreenW": 2.7,
+    "minLenPctOfScreenW": 3.8,
+    "thicknessPx": 3
+  },
+
+  "statusText": { "x": 45, "y": 60.2, "w": 40, "h": 3.5, "align": "center" },
+  "moodText":   { "x": 49, "y": 64.8, "w": 40, "h": 3.5, "align": "center" },
+
+  "dialogue": {
+    "x": 12, "y": 67, "w": 76, "h": 12,
+    "tapToToggleLang": true
+  },
+
+  "inRoom": {
+    "slots": [
+      { "x": 26, "y": 80.7, "w": 14, "h": 7 },
+      { "x": 40, "y": 80.7, "w": 14, "h": 7 },
+      { "x": 54, "y": 80.7, "w": 14, "h": 7 }
+    ]
+  }
+}
+
+
+
+
+
+
+
