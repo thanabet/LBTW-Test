@@ -34,12 +34,10 @@ export class HudEngine {
     // portrait animation
     this._portraitAnimTimer = null;
     this._portraitAnimIndex = 0;
-
-    // guard กัน restart animation ทุก tick
     this._portraitAnimSig = null;
     this._lastEmotion = null;
 
-    // status icon (ของเดิม)
+    // status icon
     this.statusIconEl = el("img");
     this.statusIconEl.style.position = "absolute";
     this.statusIconEl.style.objectFit = "contain";
@@ -47,13 +45,19 @@ export class HudEngine {
     this.statusIconEl.style.pointerEvents = "none";
     this.statusIconEl.style.display = "none";
 
-    // ✅ NEW: logo hotspot (ไม่บังคับ ใช้เมื่อมี layout.logoHotspot)
+    // ✅ NEW: status icon animation (เหมือน portrait)
+    this._statusAnimTimer = null;
+    this._statusAnimIndex = 0;
+    this._statusAnimSig = null;
+    this._lastStatusIcon = null;
+
+    // logo hotspot (optional)
     this.logoHotspotEl = el("div");
     this.logoHotspotEl.style.position = "absolute";
     this.logoHotspotEl.style.background = "transparent";
     this.logoHotspotEl.style.pointerEvents = "auto";
     this.logoHotspotEl.style.cursor = "pointer";
-    this.logoHotspotEl.style.display = "none"; // เปิดเมื่อมี layout
+    this.logoHotspotEl.style.display = "none";
 
     this.root.append(
       this.monthEl, this.dayEl,
@@ -96,15 +100,16 @@ export class HudEngine {
     this.inRoomWrap.style.display = "flex";
     this.inRoomWrap.style.gap = "0.5rem";
 
-    // ✅ NEW: modal system (popup card)
+    // modal system
     this._initModal();
 
-    // ✅ NEW: click handlers (portrait + calendar)
+    // click portrait -> profile card
     this.portraitEl.addEventListener("click", () => {
       const src = this._getProfileCardSrc();
       if (src) this._openModal(src);
     });
 
+    // click calendar -> schedule card
     const openSchedule = () => {
       const src = this._getScheduleCardSrc();
       if (src) this._openModal(src);
@@ -112,7 +117,7 @@ export class HudEngine {
     this.monthEl.addEventListener("click", openSchedule);
     this.dayEl.addEventListener("click", openSchedule);
 
-    // ✅ NEW: logo click -> intromie
+    // click logo -> intromie url
     this.logoHotspotEl.addEventListener("click", () => {
       const url = this._getIntromieUrl();
       if (url) window.open(url, "_blank", "noopener,noreferrer");
@@ -170,10 +175,8 @@ export class HudEngine {
     this.modalBackdrop.appendChild(this.modalCard);
     document.body.appendChild(this.modalBackdrop);
 
-    // close interactions
     this.modalClose.addEventListener("click", () => this._closeModal());
     this.modalBackdrop.addEventListener("click", (e) => {
-      // คลิกนอกการ์ดเพื่อปิด
       if (e.target === this.modalBackdrop) this._closeModal();
     });
   }
@@ -188,7 +191,6 @@ export class HudEngine {
   }
 
   _getProfileCardSrc(){
-    // priority: state -> layout -> default
     return (
       this.state.profileCardSrc ||
       this.layout.profileCardSrc ||
@@ -205,7 +207,6 @@ export class HudEngine {
   }
 
   _getIntromieUrl(){
-    // priority: layout -> default(null)
     return this.layout.intromieUrl || null;
   }
 
@@ -241,15 +242,9 @@ export class HudEngine {
     this._applyRectPx(this.moodEl,   L.moodText);
     this._applyRectPx(this.dialogueEl, L.dialogue);
 
-    if (L.portrait) {
-      this._applyRectPx(this.portraitEl, L.portrait);
-    }
+    if (L.portrait) this._applyRectPx(this.portraitEl, L.portrait);
+    if (L.statusIcon) this._applyRectPx(this.statusIconEl, L.statusIcon);
 
-    if (L.statusIcon) {
-      this._applyRectPx(this.statusIconEl, L.statusIcon);
-    }
-
-    // ✅ NEW: logo hotspot only if provided
     if (L.logoHotspot) {
       this.logoHotspotEl.style.display = "block";
       this._applyRectPx(this.logoHotspotEl, L.logoHotspot);
@@ -299,6 +294,15 @@ export class HudEngine {
     this.minHand.style.transform  = `rotate(${minDeg}deg)`;
   }
 
+  /* ---------------- Shared Anim Signature ---------------- */
+
+  _makeAnimSig(anim){
+    const frames = (anim.frames || []).join("|");
+    const durs = (anim.durationsMs || []).join(",");
+    const loop = anim.loop ? "1" : "0";
+    return `${frames}::${durs}::${loop}`;
+  }
+
   /* ---------------- Portrait Anim ---------------- */
 
   _stopPortraitAnim(){
@@ -306,13 +310,6 @@ export class HudEngine {
       clearTimeout(this._portraitAnimTimer);
       this._portraitAnimTimer = null;
     }
-  }
-
-  _makeAnimSig(anim){
-    const frames = (anim.frames || []).join("|");
-    const durs = (anim.durationsMs || []).join(",");
-    const loop = anim.loop ? "1" : "0";
-    return `${frames}::${durs}::${loop}`;
   }
 
   _playPortraitAnim(anim){
@@ -328,13 +325,9 @@ export class HudEngine {
       this.portraitEl.src = `assets/portrait/${frameName}.png`;
 
       this._portraitAnimIndex++;
-
       if(this._portraitAnimIndex >= anim.frames.length){
-        if(anim.loop){
-          this._portraitAnimIndex = 0;
-        }else{
-          return;
-        }
+        if(anim.loop) this._portraitAnimIndex = 0;
+        else return;
       }
 
       this._portraitAnimTimer = setTimeout(playFrame, duration);
@@ -349,9 +342,45 @@ export class HudEngine {
     this.portraitEl.src = `assets/portrait/${emotion}.png`;
   }
 
-  /* ---------------- Status Icon ---------------- */
+  /* ---------------- Status Icon Anim ---------------- */
+
+  _stopStatusAnim(){
+    if(this._statusAnimTimer){
+      clearTimeout(this._statusAnimTimer);
+      this._statusAnimTimer = null;
+    }
+  }
+
+  _playStatusAnim(anim){
+    this._stopStatusAnim();
+    if(!anim?.frames?.length) return;
+
+    this._statusAnimIndex = 0;
+    this.statusIconEl.style.display = "block";
+
+    const playFrame = () => {
+      const frameName = anim.frames[this._statusAnimIndex];
+      const duration = anim.durationsMs?.[this._statusAnimIndex] ?? 400;
+
+      this.statusIconEl.src = `assets/icons/${frameName}.png`;
+
+      this._statusAnimIndex++;
+      if(this._statusAnimIndex >= anim.frames.length){
+        if(anim.loop) this._statusAnimIndex = 0;
+        else return;
+      }
+
+      this._statusAnimTimer = setTimeout(playFrame, duration);
+    };
+
+    playFrame();
+  }
 
   setStatusIcon(iconKey){
+    // ถ้าใช้รูปนิ่ง → หยุด anim ก่อน
+    this._stopStatusAnim();
+    this._statusAnimSig = null;
+
     if(!iconKey){
       this.statusIconEl.style.display = "none";
       this.statusIconEl.removeAttribute("src");
@@ -386,8 +415,20 @@ export class HudEngine {
       }
     }
 
-    // status icon
-    this.setStatusIcon(this.state.statusIcon);
+    // ✅ status icon (anim has priority)
+    if (this.state.statusIconAnim){
+      const sig = this._makeAnimSig(this.state.statusIconAnim);
+      if(sig !== this._statusAnimSig){
+        this._statusAnimSig = sig;
+        this._lastStatusIcon = this.state.statusIcon || null;
+        this._playStatusAnim(this.state.statusIconAnim);
+      }
+    } else {
+      if(this.state.statusIcon !== this._lastStatusIcon){
+        this._lastStatusIcon = this.state.statusIcon;
+        this.setStatusIcon(this.state.statusIcon);
+      }
+    }
 
     // in room
     this._renderInRoom(this.state.inRoom || []);
