@@ -75,10 +75,9 @@ export class HudEngine {
     this.inRoomWrap.style.display = "flex";
     this.inRoomWrap.style.gap = "0.5rem";
 
-    // ===== portrait animation runtime =====
-    this._portraitTimer = null;   // setTimeout id
-    this._portraitKey = null;     // dedupe key
-    this._portraitStop = false;   // guard
+    // ===== NEW: portrait animation runtime =====
+    this._portraitTimer = null;
+    this._portraitKey = null;
 
     // default portrait (static)
     this.setPortrait("normal");
@@ -114,8 +113,13 @@ export class HudEngine {
     this._applyRectPx(this.moodEl,   L.moodText);
     this._applyRectPx(this.dialogueEl, L.dialogue);
 
-    if (L.portrait) this._applyRectPx(this.portraitEl, L.portrait);
-    if (L.statusIcon) this._applyRectPx(this.statusIconEl, L.statusIcon);
+    if (L.portrait) {
+      this._applyRectPx(this.portraitEl, L.portrait);
+    }
+
+    if (L.statusIcon) {
+      this._applyRectPx(this.statusIconEl, L.statusIcon);
+    }
 
     const slots = L.inRoom.slots;
     if(slots?.length){
@@ -157,70 +161,49 @@ export class HudEngine {
     this.minHand.style.transform  = `rotate(${minDeg}deg)`;
   }
 
-  // ===== Portrait (static) =====
+  // ============ Portrait (static) ============
   setPortrait(emotion){
     this._stopPortraitAnim();
     this._portraitKey = `static:${emotion}`;
     this.portraitEl.src = `assets/portrait/${emotion}.png`;
   }
 
-  // ===== Portrait (animated: per-frame durations) =====
-  // frames: 2-3 (หรือมากกว่านี้ก็ได้)
-  // durationsMs: array เช่น [900,120,900] = เฟรม1ค้าง900ms -> เฟรม2ค้าง120ms -> เฟรม3ค้าง900ms
-  setPortraitAnimated(emotion, frames = 2, durationsMs = null, defaultIntervalMs = 850){
+  // ============ Portrait (animated 2–3 frames) ============
+  setPortraitAnimated(emotion, frames = 2, intervalMs = 850){
+    // กันค่าพัง
     const n = Math.max(1, Math.min(10, Number(frames) || 1));
-    const defIv = Math.max(80, Number(defaultIntervalMs) || 850);
+    const iv = Math.max(120, Number(intervalMs) || 850);
 
-    // normalize durations
-    let ds = null;
-    if (Array.isArray(durationsMs) && durationsMs.length > 0){
-      ds = durationsMs.map(v => Math.max(40, Number(v) || defIv));
-    }
-
-    // ทำ key เพื่อไม่ restart ซ้ำๆ
-    const key = `anim:${emotion}:${n}:${ds ? ds.join(",") : "def:"+defIv}`;
-    if (this._portraitKey === key) return;
+    const key = `anim:${emotion}:${n}:${iv}`;
+    if (this._portraitKey === key) return; // ไม่ต้องรีสตาร์ทถ้าเหมือนเดิม
 
     this._stopPortraitAnim();
     this._portraitKey = key;
 
+    // ถ้าเฟรม 1 ก็ fallback เป็น static
     if (n <= 1){
       this.portraitEl.src = `assets/portrait/${emotion}.png`;
       return;
     }
 
-    this._portraitStop = false;
-    let frameIndex = 1;
+    let frame = 1;
+    this.portraitEl.src = `assets/portrait/${emotion}_${frame}.png`;
 
-    const step = () => {
-      if (this._portraitStop) return;
-
-      // set frame image
-      this.portraitEl.src = `assets/portrait/${emotion}_${frameIndex}.png`;
-
-      // pick duration for THIS frame
-      // ถ้า ds สั้นกว่า n: จะวนซ้ำตามลำดับ ds
-      const d = ds ? ds[(frameIndex - 1) % ds.length] : defIv;
-
-      // next frame
-      frameIndex++;
-      if (frameIndex > n) frameIndex = 1;
-
-      this._portraitTimer = setTimeout(step, d);
-    };
-
-    step();
+    this._portraitTimer = setInterval(() => {
+      frame = frame + 1;
+      if (frame > n) frame = 1;
+      this.portraitEl.src = `assets/portrait/${emotion}_${frame}.png`;
+    }, iv);
   }
 
   _stopPortraitAnim(){
-    this._portraitStop = true;
     if (this._portraitTimer){
-      clearTimeout(this._portraitTimer);
+      clearInterval(this._portraitTimer);
       this._portraitTimer = null;
     }
   }
 
-  // ===== Status icon =====
+  // ============ Status icon ============
   setStatusIcon(iconKey){
     if(!iconKey){
       this.statusIconEl.style.display = "none";
@@ -239,19 +222,12 @@ export class HudEngine {
     const dlg = this.state.dialogue || {};
     this.dialogueEl.textContent = dlg[this.dialogueLang] || "";
 
-    // portrait: รองรับ per-frame speed
+    // portrait: ถ้าอยาก animate ให้ส่ง portraitFrames (2 หรือ 3)
     if (this.state.emotion) {
       const frames = Number(this.state.portraitFrames || 1);
+      const intervalMs = Number(this.state.portraitIntervalMs || 850);
 
-      // ✅ ใหม่: ใส่ array ความเร็วแต่ละเฟรมได้
-      const durations = Array.isArray(this.state.portraitFrameDurationsMs)
-        ? this.state.portraitFrameDurationsMs
-        : null;
-
-      // fallback (กรณีไม่ได้ใส่ array)
-      const defaultIntervalMs = Number(this.state.portraitIntervalMs || 850);
-
-      if (frames >= 2) this.setPortraitAnimated(this.state.emotion, frames, durations, defaultIntervalMs);
+      if (frames >= 2) this.setPortraitAnimated(this.state.emotion, frames, intervalMs);
       else this.setPortrait(this.state.emotion);
     }
 
