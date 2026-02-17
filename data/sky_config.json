@@ -1,6 +1,7 @@
 {
   "mode": "keyframes",
   "keyframes": [
+{ "time": "04:00", "src": "./assets/sky/sky_0400.png" },
     { "time": "05:00", "src": "./assets/sky/sky_0500.png" },
     { "time": "06:00", "src": "./assets/sky/sky_0600.png" },
     { "time": "07:00", "src": "./assets/sky/sky_0700.png" },
