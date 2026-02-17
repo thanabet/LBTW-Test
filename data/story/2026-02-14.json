@@ -26,8 +26,8 @@
       "state": {
         "emotion": "normal",
         "portraitAnim": {
-          "frames": ["normal_1", "normal_2", "normal_3"],
-          "durationsMs": [1200, 200, 150],
+          "frames": ["normal_1", "normal_2"],
+          "durationsMs": [3200, 100],
           "loop": true
         },
         "statusIcon": "book",
