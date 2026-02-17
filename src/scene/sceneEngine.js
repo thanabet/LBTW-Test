@@ -7,6 +7,9 @@ export class SceneEngine {
     this.app = null;
     this.sky = null;
     this.sceneRectPx = null;
+
+    // ✅ NEW: reuse mask graphic
+    this._maskG = null;
   }
 
   _percentRectToPx(rectPct, w, h){
@@ -37,23 +40,24 @@ export class SceneEngine {
   resize(){
     if(!this.app) return;
 
-    // ✅ ใช้ขนาดของ stage จริง (scene-host อยู่ใน stage แล้ว)
     const rect = this.hostEl.getBoundingClientRect();
     const w = rect.width;
     const h = rect.height;
 
     this.app.renderer.resize(w, h);
 
-    // ✅ sceneRect อิงจาก stage (ไม่ใช่ viewport)
     this.sceneRectPx = this._percentRectToPx(this.layout.sceneRect, w, h);
 
-    // mask เฉพาะพื้นที่สีเทา
-    const g = new PIXI.Graphics();
-    g.rect(this.sceneRectPx.x, this.sceneRectPx.y, this.sceneRectPx.w, this.sceneRectPx.h);
-    g.fill({ color: 0xffffff, alpha: 1 });
+    // ✅ mask เฉพาะพื้นที่สีเทา (reuse ไม่สร้างใหม่ทุกครั้ง)
+    if(!this._maskG){
+      this._maskG = new PIXI.Graphics();
+      this.app.stage.addChild(this._maskG);
+      this.app.stage.mask = this._maskG;
+    }
 
-    this.app.stage.mask = g;
-    this.app.stage.addChild(g);
+    this._maskG.clear();
+    this._maskG.rect(this.sceneRectPx.x, this.sceneRectPx.y, this.sceneRectPx.w, this.sceneRectPx.h);
+    this._maskG.fill({ color: 0xffffff, alpha: 1 });
 
     if(this.sky){
       this.sky.resizeToRect(this.sceneRectPx);

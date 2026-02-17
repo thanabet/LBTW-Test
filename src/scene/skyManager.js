@@ -10,11 +10,15 @@ export class SkyManager {
 
     this.stage.addChild(this.a, this.b);
 
-    this.currentIndex = 0;
-    this.targetIndex = 0;
+    this.currentIndex = 0;     // committed index (หลัง fade เสร็จ)
+    this.targetIndex = 0;      // index ที่กำลังจะไป
     this.fadeStart = 0;
     this.fadeDurationMs = 90_000; // 90 วิ (ปรับได้)
     this.rect = { x:0, y:0, w:100, h:100 };
+
+    // ✅ NEW: กัน fade ซ้อน/เริ่มซ้ำ
+    this.isFading = false;
+    this._fadeToken = 0;
   }
 
   async load(urls){
@@ -31,6 +35,8 @@ export class SkyManager {
 
     this.a.texture = this.textures[idx];
     this.b.texture = this.textures[idx];
+
+    // cover จะถูกเรียกจาก resizeToRect() ตอน scene.resize()
   }
 
   resizeToRect(rect){
@@ -65,10 +71,22 @@ export class SkyManager {
   updateByTime(now){
     const idx = this._timeToIndex(now);
 
-    // ถ้าไม่เปลี่ยนช่วง ไม่ต้องทำอะไร
-    if(idx === this.currentIndex) return;
+    // ✅ ถ้าเหมือนเดิม ไม่ต้องทำอะไร
+    // - ถ้ากำลัง fade อยู่ ให้เทียบกับ targetIndex (กันเริ่มซ้ำทุกเฟรม)
+    // - ถ้าไม่ได้ fade ให้เทียบกับ currentIndex (ปกติ)
+    if(this.isFading){
+      if(idx === this.targetIndex) return;
+      // ถ้าเวลาข้ามไปช่วงใหม่ระหว่าง fade (โอกาสน้อยมาก) -> ข้ามไป retarget รอบนี้
+      // (ปลอดภัยสุด: รอให้ fade เดิมจบก่อน แล้วค่อยเปลี่ยนใน tick ถัดไป)
+      return;
+    } else {
+      if(idx === this.currentIndex) return;
+    }
 
-    // เริ่ม fade
+    // ✅ เริ่ม fade (ครั้งเดียว)
+    this.isFading = true;
+    const token = ++this._fadeToken;
+
     this.targetIndex = idx;
     this.fadeStart = performance.now();
 
@@ -79,6 +97,9 @@ export class SkyManager {
     this.a.alpha = 1;
 
     const animateFade = () => {
+      // ✅ ถ้ามี fade ใหม่กว่าเข้ามา (กันซ้อน) ให้หยุดตัวเก่า
+      if(token !== this._fadeToken) return;
+
       const t = (performance.now() - this.fadeStart) / this.fadeDurationMs;
       const clamped = Math.min(1, t);
 
@@ -97,6 +118,8 @@ export class SkyManager {
         this._cover(this.a, this.rect);
         this.a.alpha = 1;
         this.b.alpha = 0;
+
+        this.isFading = false;
       }
     };
 
