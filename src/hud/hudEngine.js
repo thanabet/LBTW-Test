@@ -31,13 +31,22 @@ export class HudEngine {
     this.portraitEl.style.pointerEvents = "auto";
     this.portraitEl.style.cursor = "pointer";
 
+    // ✅ NEW: status icon
+    this.statusIconEl = el("img");
+    this.statusIconEl.style.position = "absolute";
+    this.statusIconEl.style.objectFit = "contain";
+    this.statusIconEl.style.userSelect = "none";
+    this.statusIconEl.style.pointerEvents = "none"; // ไม่บังการกด
+    this.statusIconEl.style.display = "none"; // default ซ่อนก่อน
+
     this.root.append(
       this.monthEl, this.dayEl,
       this.statusEl, this.moodEl,
       this.dialogueEl,
       this.inRoomWrap,
       this.hourHand, this.minHand,
-      this.portraitEl
+      this.portraitEl,
+      this.statusIconEl
     );
 
     for(const e of [this.monthEl,this.dayEl,this.statusEl,this.moodEl,this.dialogueEl]){
@@ -103,6 +112,11 @@ export class HudEngine {
       this._applyRectPx(this.portraitEl, L.portrait);
     }
 
+    // ✅ NEW: status icon layout (ถ้ามีใน json)
+    if (L.statusIcon) {
+      this._applyRectPx(this.statusIconEl, L.statusIcon);
+    }
+
     const slots = L.inRoom.slots;
     if(slots?.length){
       const first = slots[0];
@@ -147,6 +161,17 @@ export class HudEngine {
     this.portraitEl.src = `assets/portrait/${emotion}.png`;
   }
 
+  // ✅ NEW: set status icon (ซ่อนถ้าไม่มี)
+  setStatusIcon(iconKey){
+    if(!iconKey){
+      this.statusIconEl.style.display = "none";
+      this.statusIconEl.removeAttribute("src");
+      return;
+    }
+    this.statusIconEl.src = `assets/icons/${iconKey}.png`;
+    this.statusIconEl.style.display = "block";
+  }
+
   setState(state){
     this.state = state || {};
     this.statusEl.textContent = this.state.status || "";
@@ -158,6 +183,9 @@ export class HudEngine {
     if (this.state.emotion) {
       this.setPortrait(this.state.emotion);
     }
+
+    // ✅ NEW: read from story state
+    this.setStatusIcon(this.state.statusIcon);
 
     this._renderInRoom(this.state.inRoom || []);
   }
@@ -171,7 +199,6 @@ export class HudEngine {
     this.setState(this.state);
   }
 
-  // 🔥 เปลี่ยนจาก div -> img card (แก้เฉพาะส่วนนี้)
   _renderInRoom(list){
     this.inRoomWrap.innerHTML = "";
     const slots = this.layout.inRoom.slots;
@@ -179,7 +206,6 @@ export class HudEngine {
 
     list.slice(0, slots.length).forEach((id,i)=>{
       const s = slots[i];
-
       const w = (s.w/100) * r.width;
       const h = (s.h/100) * r.height;
 
