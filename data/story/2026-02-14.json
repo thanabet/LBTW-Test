@@ -8,7 +8,7 @@
         "emotion": "normal",
         "portraitAnim": {
           "frames": ["normal_1", "normal_2"],
-          "durationsMs": [1500, 120],
+          "durationsMs": [1500, 920],
           "loop": true
         },
         "statusIcon": "book",
@@ -27,7 +27,7 @@
         "emotion": "normal",
         "portraitAnim": {
           "frames": ["normal_1", "normal_2", "normal_3"],
-          "durationsMs": [1200, 90, 150],
+          "durationsMs": [1200, 200, 150],
           "loop": true
         },
         "statusIcon": "book",
@@ -42,3 +42,4 @@
     }
   ]
 }
+
