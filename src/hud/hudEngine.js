@@ -49,7 +49,7 @@ export class HudEngine {
     this._statusAnimSig = null;
     this._lastStatusIcon = null;
 
-    /* ---------- NEW: logo hotspot ---------- */
+    /* ---------- logo hotspot ---------- */
     this.logoHotspotEl = el("div");
     this.logoHotspotEl.style.position = "absolute";
     this.logoHotspotEl.style.background = "transparent";
@@ -98,10 +98,10 @@ export class HudEngine {
     this.inRoomWrap.style.display = "flex";
     this.inRoomWrap.style.gap = "0.5rem";
 
-    /* ---------- NEW: modal system ---------- */
+    /* ---------- modal system ---------- */
     this._initModal();
 
-    /* ---------- NEW: click events ---------- */
+    /* ---------- click events ---------- */
     this.portraitEl.addEventListener("click", () => {
       const src = this.state.profileCardSrc || "assets/cards/profile_card.png";
       this._openModal(src);
@@ -242,7 +242,7 @@ export class HudEngine {
     this.minHand.style.top=`${cy-minLen*0.9}px`;
   }
 
-  /* ---------- REMAINING ORIGINAL LOGIC (UNCHANGED) ---------- */
+  /* ---------- ORIGINAL LOGIC (UNCHANGED) ---------- */
 
   setCalendar(now){
     const m=["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
@@ -389,6 +389,14 @@ export class HudEngine {
       card.style.height=(s.h/100)*r.height+"px";
       card.style.objectFit="contain";
       card.style.borderRadius="8px";
+
+      // NEW: click to open character info card (popup)
+      card.style.cursor="pointer";
+      card.style.pointerEvents="auto";
+      card.addEventListener("click", ()=>{
+        this._openModal(`assets/cards/characters/${id}.png`);
+      });
+
       this.inRoomWrap.appendChild(card);
     });
   }
