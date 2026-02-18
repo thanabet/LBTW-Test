@@ -42,9 +42,7 @@ function setStageByRatio(){
   y += STAGE_Y_OFFSET_PX;
 
   // clamp ไม่ให้เลื่อนจนเห็นขอบว่าง
-  // top limit: ไม่ให้ขอบบนลงมาจนเห็นพื้นหลัง
   y = Math.min(0, y);
-  // bottom limit: ไม่ให้ขอบล่างยกขึ้นจนเห็นพื้นหลัง
   y = Math.max(vh - stageH, y);
 
   document.documentElement.style.setProperty("--stage-y", `${y}px`);
@@ -53,19 +51,6 @@ function setStageByRatio(){
 async function boot(){
   setVisualViewportHeight();
   setStageByRatio();
-
-  const reflow = () => {
-    setVisualViewportHeight();
-    setStageByRatio();
-    scene.resize();
-    hud.resize();
-  };
-
-  if(window.visualViewport){
-    window.visualViewport.addEventListener("resize", reflow);
-    window.visualViewport.addEventListener("scroll", reflow);
-  }
-  window.addEventListener("resize", reflow);
 
   const sceneLayout = await loadJSON("./data/scene_layout.json");
   const hudLayout = await loadJSON("./data/hud_layout.json");
@@ -89,36 +74,58 @@ async function boot(){
   hud.setState(story.getCurrentState());
   hud.enableDialogueToggle(() => hud.toggleDialogueLang());
 
-const skyCfg = await loadJSON("./data/sky_config.json");
+  const reflow = () => {
+    setVisualViewportHeight();
+    setStageByRatio();
+    scene.resize();
+    hud.resize();
+  };
 
-// ดึง urls ไม่ให้ซ้ำ
-const urls = [...new Set(skyCfg.keyframes.map(k => k.src))];
+  if(window.visualViewport){
+    window.visualViewport.addEventListener("resize", reflow);
+    window.visualViewport.addEventListener("scroll", reflow);
+  }
+  window.addEventListener("resize", reflow);
 
-await scene.initSky({
-  urls,
-  keyframes: skyCfg.keyframes,
-  mode: "keyframes"
-});
+  // --- SKY (keyframes) ---
+  const skyCfg = await loadJSON("./data/sky_config.json");
+  const urls = [...new Set(skyCfg.keyframes.map(k => k.src))];
 
+  await scene.initSky({
+    urls,
+    keyframes: skyCfg.keyframes,
+    mode: "keyframes"
+  });
+
+  // --- CLOUDS (profiles + 2 layers) ---
+  const cloudCfg = await loadJSON("./data/cloud_config.json");
+  await scene.initClouds(cloudCfg);
+
+  // first layout
+  scene.resize();
+  hud.resize();
+
+  let lastTs = performance.now();
 
   function tick(){
     const now = new Date();
-
-    scene.updateSkyByTime(now);
+    const ts = performance.now();
+    const dtSec = Math.min(0.05, (ts - lastTs) / 1000); // clamp กันกระตุก
+    lastTs = ts;
 
     const nextState = story.computeStateAt(now);
-    hud.setState(nextState);
 
+    // ✅ scene update (sky + clouds)
+    scene.update(now, dtSec, nextState);
+
+    // HUD (ของเดิม)
+    hud.setState(nextState);
     hud.setCalendar(now);
     hud.setClockHands(now);
 
     requestAnimationFrame(tick);
   }
   tick();
-
-  // first layout
-  scene.resize();
-  hud.resize();
 }
 
 boot().catch(err => {

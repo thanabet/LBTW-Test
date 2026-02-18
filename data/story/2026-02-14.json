@@ -8,6 +8,8 @@
         "profileCardSrc": "assets/cards/profile_card.png",
         "scheduleCardSrc": "assets/cards/schedule_card.png",
 
+        "cloudProfile": "few",
+
         "emotion": "normal",
         "portraitAnim": {
           "frames": ["normal_1", "normal_2"],
@@ -34,6 +36,8 @@
       "state": {
         "profileCardSrc": "assets/cards/profile_card.png",
         "scheduleCardSrc": "assets/cards/schedule_card.png",
+
+        "cloudProfile": "overcast",
 
         "emotion": "normal",
         "portraitAnim": {
