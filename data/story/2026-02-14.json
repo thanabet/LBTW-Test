@@ -8,7 +8,7 @@
         "profileCardSrc": "assets/cards/profile_card.png",
         "scheduleCardSrc": "assets/cards/schedule_card.png",
 
-        "cloudProfile": "few",
+        "cloudProfile": "overcast",
 
         "emotion": "normal",
         "portraitAnim": {
@@ -62,3 +62,4 @@
     }
   ]
 }
+
