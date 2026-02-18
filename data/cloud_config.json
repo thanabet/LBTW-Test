@@ -23,7 +23,7 @@
         {
           "name": "near",
           "speedPxPerSec": 10,
-          "scale": 2,
+          "scale": 1.5,
           "baseAlpha": 0.85,
           "bandRectPct": { "x": 0, "y": 0, "w": 100, "h": 45 },
           "yAlign": "top",
@@ -77,6 +77,7 @@
 
   "defaultProfile": "none"
 }
+
 
 
 
