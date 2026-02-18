@@ -10,9 +10,9 @@
           "speedPxPerSec": 4,
           "scale": 0.98,
           "baseAlpha": 0.55,
-          "bandRectPct": { "x": 0, "y": 0, "w": 100, "h": 45 },
+          "bandRectPct": { "x": 0, "y": 18, "w": 100, "h": 70 },
           "yAlign": "center",
-          "yOffsetPct": -2,
+          "yOffsetPct": 3,
           "keyframes": [
             { "time": "06:00", "src": "./assets/clouds/far_few_0600.png" },
             { "time": "12:00", "src": "./assets/clouds/far_few_0600.png" },
@@ -25,9 +25,9 @@
           "speedPxPerSec": 10,
           "scale": 1.08,
           "baseAlpha": 0.85,
-          "bandRectPct": { "x": 0, "y": 18, "w": 100, "h": 70 },
+          "bandRectPct": { "x": 0, "y": 0, "w": 100, "h": 45 },
           "yAlign": "top",
-          "yOffsetPct": 3,
+          "yOffsetPct": -2,
           "keyframes": [
             { "time": "06:00", "src": "./assets/clouds/near_few_0600.png" },
             { "time": "12:00", "src": "./assets/clouds/near_few_0600.png" },
@@ -77,4 +77,5 @@
 
   "defaultProfile": "none"
 }
+
 
