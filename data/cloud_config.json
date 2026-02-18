@@ -10,7 +10,7 @@
         {
           "name": "far",
           "speedPxPerSec": 4,
-          "scale": 0.4,
+          "scale": 0.6,
           "baseAlpha": 0.55,
 
           "bandRectPct": { "x": 0, "y": 28, "w": 100, "h": 70 },
@@ -87,6 +87,7 @@
 
   "defaultProfile": "none"
 }
+
 
 
 
