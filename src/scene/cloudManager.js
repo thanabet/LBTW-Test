@@ -2,21 +2,11 @@ class CloudLayer {
   constructor(container){
     this.container = container;
 
-    // ✅ 2 groups: current + next
-    this.group0 = new PIXI.Container(); // current texture (wrap with 2 sprites)
-    this.group1 = new PIXI.Container(); // next texture (wrap with 2 sprites)
-
-    this.s00 = new PIXI.Sprite();
-    this.s01 = new PIXI.Sprite();
-    this.s10 = new PIXI.Sprite();
-    this.s11 = new PIXI.Sprite();
-
-    this.group0.addChild(this.s00, this.s01);
-    this.group1.addChild(this.s10, this.s11);
-
+    // 2 groups: current + next (crossfade by group alpha)
+    this.group0 = new PIXI.Container();
+    this.group1 = new PIXI.Container();
     this.container.addChild(this.group0, this.group1);
 
-    // start invisible
     this.group0.alpha = 0;
     this.group1.alpha = 0;
 
@@ -30,20 +20,31 @@ class CloudLayer {
     this._scale = 1;
     this._baseAlpha = 1;
 
-    // vertical placement controls
-    this._bandRectPct = null; // {x,y,w,h} in percent of sceneRect
-    this._yAlign = "center";  // "top" | "center" | "bottom"
-    this._yOffsetPct = 0;     // percent of sceneRect.h
+    // ✅ new: overlap in px between tiles
+    this._overlapPx = 0;
 
-    // keyframes: [{ minute, url }]
+    // vertical placement controls
+    this._bandRectPct = null;
+    this._yAlign = "center";
+    this._yOffsetPct = 0;
+
+    // keyframes
     this._kfs = [];
 
-    // current pair for blending
+    // active urls
     this._curUrl = null;
     this._nextUrl = null;
 
-    // shared scrolling offset
+    // scrolling offset (in px)
     this._x = 0;
+
+    // dynamic tiling sprites
+    this.tiles0 = [];
+    this.tiles1 = [];
+
+    // cached tile step (width minus overlap) for each group
+    this._step0 = 0;
+    this._step1 = 0;
   }
 
   bindTextureMap(texByUrl){
@@ -55,12 +56,22 @@ class CloudLayer {
       this._enabled = false;
       this.group0.alpha = 0;
       this.group1.alpha = 0;
+
       this._kfs = [];
       this._bandRectPct = null;
       this._yAlign = "center";
       this._yOffsetPct = 0;
+
       this._curUrl = null;
       this._nextUrl = null;
+
+      this._overlapPx = 0;
+
+      this._setTileCount(this.group0, this.tiles0, 0);
+      this._setTileCount(this.group1, this.tiles1, 0);
+      this._step0 = 0;
+      this._step1 = 0;
+
       return;
     }
 
@@ -68,6 +79,9 @@ class CloudLayer {
     this._speed = cfg.speedPxPerSec ?? 0;
     this._scale = cfg.scale ?? 1;
     this._baseAlpha = cfg.baseAlpha ?? 1;
+
+    // ✅ overlap per layer (default 0)
+    this._overlapPx = Math.max(0, Number(cfg.overlapPx ?? 0) || 0);
 
     this._bandRectPct = cfg.bandRectPct || null;
     this._yAlign = cfg.yAlign || "center";
@@ -80,47 +94,43 @@ class CloudLayer {
 
     this._applyBandRect();
     this._applyBlend(new Date(), true);
-    this._resetWrapPositions();
+    this._resetScroll();
   }
 
   resizeToRect(sceneRectPx){
     this.rect = sceneRectPx;
     this._applyBandRect();
 
-    // re-cover current textures if set
-    if(this._curUrl) this._applyTextureToGroup(this.group0, this._curUrl);
-    if(this._nextUrl) this._applyTextureToGroup(this.group1, this._nextUrl);
+    // Re-apply textures so we can recompute steps & counts
+    if(this._curUrl) this._applyTextureToGroup(this.group0, this.tiles0, this._curUrl, true);
+    if(this._nextUrl) this._applyTextureToGroup(this.group1, this.tiles1, this._nextUrl, true);
 
-    this._resetWrapPositions();
+    this._resetScroll();
   }
 
   update(now, dtSec){
     if(!this._enabled || !this._kfs.length) return;
 
-    // time blend (alpha on groups, not sprites)
+    // blend by time (group alpha)
     this._applyBlend(now, false);
 
-    // move right -> left
+    // move left
     this._x -= this._speed * dtSec;
 
-    // wrap based on max width of current/next tiling width
-    const w0 = this._tileWidthOfGroup(this.group0);
-    const w1 = this._tileWidthOfGroup(this.group1);
-    const w = Math.max(w0, w1);
+    // wrap based on max step (safe)
+    const step = Math.max(this._step0, this._step1);
+    if(step > 0){
+      while(this._x <= -step) this._x += step;
 
-    if(w > 0){
-      while(this._x <= -w) this._x += w;
-
-      this._positionGroup(this.group0, this._x);
-      this._positionGroup(this.group1, this._x);
+      this._positionTiles(this.tiles0, this._x);
+      this._positionTiles(this.tiles1, this._x);
     }
   }
 
-  /* ---------- internal ---------- */
+  /* ------------------ internal ------------------ */
 
   _applyBandRect(){
     const r = this.rect;
-
     if(!this._bandRectPct){
       this.bandRect = { x:r.x, y:r.y, w:r.w, h:r.h };
       return;
@@ -133,7 +143,6 @@ class CloudLayer {
     const h = (p.h/100) * r.h;
 
     const yOffset = (this._yOffsetPct/100) * r.h;
-
     this.bandRect = { x, y: y + yOffset, w, h };
   }
 
@@ -161,79 +170,115 @@ class CloudLayer {
     const t = (mm - m0) / (m1 - m0);
     const s = this._smoothstep(Math.max(0, Math.min(1, t)));
 
-    // set textures only when changed
     if(force || this._curUrl !== k0.url){
       this._curUrl = k0.url;
-      this._applyTextureToGroup(this.group0, this._curUrl);
-      this._resetWrapPositions();
+      this._applyTextureToGroup(this.group0, this.tiles0, this._curUrl, true);
+      this._resetScroll();
     }
     if(force || this._nextUrl !== k1.url){
       this._nextUrl = k1.url;
-      this._applyTextureToGroup(this.group1, this._nextUrl);
-      this._resetWrapPositions();
+      this._applyTextureToGroup(this.group1, this.tiles1, this._nextUrl, true);
+      this._resetScroll();
     }
 
-    // alpha on GROUPS => wrap won’t affect alpha anymore ✅
     this.group0.alpha = (1 - s) * this._baseAlpha;
     this.group1.alpha = s * this._baseAlpha;
   }
 
-  _applyTextureToGroup(group, url){
-    const tex = this._texByUrl.get(url);
-    if(!tex) return;
-
-    const [s0, s1] = (group === this.group0) ? [this.s00, this.s01] : [this.s10, this.s11];
-
-    s0.texture = tex;
-    s1.texture = tex;
-
-    this._coverSprite(s0, this.bandRect);
-    this._coverSprite(s1, this.bandRect);
-  }
-
-  _coverSprite(sprite, bandRect){
-    if(!sprite.texture?.width) return;
-
-    const tw = sprite.texture.width;
-    const th = sprite.texture.height;
-    const s = Math.max(bandRect.w / tw, bandRect.h / th) * this._scale;
-
-    sprite.scale.set(s);
-  }
-
-  _computeYForSprite(sprite){
+  _computeY(sprite){
     const r = this.bandRect;
-
     if(this._yAlign === "top") return r.y;
     if(this._yAlign === "bottom") return r.y + (r.h - sprite.height);
     return r.y + (r.h - sprite.height) / 2;
   }
 
-  _tileWidthOfGroup(group){
-    const s0 = (group === this.group0) ? this.s00 : this.s10;
-    return s0.width || 0;
-  }
+  _coverSprite(sprite){
+    if(!sprite.texture?.width) return;
 
-  _positionGroup(group, xOffset){
+    const tw = sprite.texture.width;
+    const th = sprite.texture.height;
     const r = this.bandRect;
-    const [s0, s1] = (group === this.group0) ? [this.s00, this.s01] : [this.s10, this.s11];
 
-    const w = s0.width || 0;
-    if(w <= 0) return;
-
-    const y = this._computeYForSprite(s0);
-
-    s0.x = r.x + xOffset;
-    s1.x = r.x + xOffset + w;
-
-    s0.y = y;
-    s1.y = y;
+    const s = Math.max(r.w / tw, r.h / th) * this._scale;
+    sprite.scale.set(s);
   }
 
-  _resetWrapPositions(){
+  _desiredTileCount(step){
+    // Need enough tiles to cover band width + 2 extra for smooth wrap
+    const r = this.bandRect;
+    if(step <= 0) return 0;
+    return Math.max(2, Math.ceil(r.w / step) + 2);
+  }
+
+  _setTileCount(group, tiles, count){
+    while(tiles.length > count){
+      const spr = tiles.pop();
+      group.removeChild(spr);
+      spr.destroy();
+    }
+    while(tiles.length < count){
+      const spr = new PIXI.Sprite();
+      tiles.push(spr);
+      group.addChild(spr);
+    }
+  }
+
+  _applyTextureToGroup(group, tiles, url, recomputeTiling){
+    const tex = this._texByUrl.get(url);
+    if(!tex) return;
+
+    // ensure at least 2 tiles to measure
+    if(tiles.length < 2) this._setTileCount(group, tiles, 2);
+
+    // apply texture + cover scale to sample
+    tiles[0].texture = tex;
+    this._coverSprite(tiles[0]);
+
+    const tileW = tiles[0].width || 0;
+    if(tileW <= 0) return;
+
+    // ✅ step = width - overlapPx (never <= 1)
+    const overlap = Math.min(this._overlapPx, Math.max(0, tileW - 2));
+    const step = Math.max(2, tileW - overlap);
+
+    // update cached step
+    if(group === this.group0) this._step0 = step;
+    else this._step1 = step;
+
+    // compute needed tile count
+    const need = recomputeTiling ? this._desiredTileCount(step) : tiles.length;
+    this._setTileCount(group, tiles, need);
+
+    // apply texture + scale to all tiles
+    for(const spr of tiles){
+      spr.texture = tex;
+      this._coverSprite(spr);
+    }
+
+    // position now
+    this._positionTiles(tiles, this._x);
+  }
+
+  _positionTiles(tiles, xOffset){
+    if(!tiles.length) return;
+
+    const r = this.bandRect;
+    const y = this._computeY(tiles[0]);
+
+    // choose correct step
+    const step = (tiles === this.tiles0) ? this._step0 : this._step1;
+    if(step <= 0) return;
+
+    for(let i=0; i<tiles.length; i++){
+      tiles[i].x = r.x + xOffset + (i * step);
+      tiles[i].y = y;
+    }
+  }
+
+  _resetScroll(){
     this._x = 0;
-    this._positionGroup(this.group0, 0);
-    this._positionGroup(this.group1, 0);
+    this._positionTiles(this.tiles0, 0);
+    this._positionTiles(this.tiles1, 0);
   }
 }
 
@@ -247,7 +292,6 @@ export class CloudManager {
 
     this._texByUrl = new Map();
 
-    // 2 layers (far behind near)
     this.layerFar = new CloudLayer(this.container);
     this.layerNear = new CloudLayer(this.container);
 
@@ -317,5 +361,6 @@ export class CloudManager {
     return hh * 60 + (Number.isNaN(mm) ? 0 : mm);
   }
 }
+
 
 
