@@ -52,10 +52,11 @@
         {
           "name": "far",
           "speedPxPerSec": 6,
-          "scale": 0.95,
+          "scale": 0.6,
           "baseAlpha": 0.70,
+          "overlapPx": 6,
 
-          "bandRectPct": { "x": 0, "y": 35, "w": 100, "h": 75 },
+          "bandRectPct": { "x": 0, "y": 28, "w": 100, "h": 70 },
           "yAlign": "center",
           "yOffsetPct": 5,
 
@@ -69,10 +70,11 @@
         {
           "name": "near",
           "speedPxPerSec": 14,
-          "scale": 1.25,
+          "scale": 1.15,
           "baseAlpha": 0.95,
+          "overlapPx": 6,
 
-          "bandRectPct": { "x": 0, "y": 0, "w": 100, "h": 55 },
+          "bandRectPct": { "x": 0, "y": 0, "w": 100, "h": 45 },
           "yAlign": "top",
           "yOffsetPct": -1,
 
@@ -89,6 +91,7 @@
 
   "defaultProfile": "none"
 }
+
 
 
 
