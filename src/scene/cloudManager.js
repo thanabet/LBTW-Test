@@ -2,19 +2,18 @@ class CloudLayer {
   constructor(container){
     this.container = container;
 
-    // two sprites for wrap scrolling
-    this.a = new PIXI.Sprite();
-    this.b = new PIXI.Sprite();
+    // ✅ ใช้ TilingSprite 2 อันซ้อนกันเพื่อ crossfade แบบเต็มพื้นที่
+    this.a = new PIXI.TilingSprite({ texture: PIXI.Texture.EMPTY, width: 1, height: 1 });
+    this.b = new PIXI.TilingSprite({ texture: PIXI.Texture.EMPTY, width: 1, height: 1 });
 
     this.a.alpha = 0;
     this.b.alpha = 0;
 
     this.container.addChild(this.a, this.b);
 
-    // scene rect (px) passed from SceneEngine
+    // scene rect (px)
     this.rect = { x:0, y:0, w:100, h:100 };
-
-    // band rect = vertical band (px) for this layer
+    // band rect (px)
     this.bandRect = { x:0, y:0, w:100, h:100 };
 
     this._kfs = []; // [{ minute, url }]
@@ -26,11 +25,16 @@ class CloudLayer {
     this._baseAlpha = 1;
 
     // vertical placement controls (percent of sceneRect)
-    this._bandRectPct = null; // {x,y,w,h} in percent of sceneRect
+    this._bandRectPct = null;
     this._yAlign = "center";  // "top" | "center" | "bottom"
-    this._yOffsetPct = 0;     // percent of sceneRect.h
+    this._yOffsetPct = 0;
 
-    this._x = 0;
+    // scroll
+    this._scrollX = 0;
+
+    // cache to avoid resetting textures constantly
+    this._lastTexUrlA = null;
+    this._lastTexUrlB = null;
   }
 
   bindTextureMap(texByUrl){
@@ -46,6 +50,8 @@ class CloudLayer {
       this._bandRectPct = null;
       this._yAlign = "center";
       this._yOffsetPct = 0;
+      this._lastTexUrlA = null;
+      this._lastTexUrlB = null;
       return;
     }
 
@@ -64,44 +70,49 @@ class CloudLayer {
       .sort((a,b)=>a.minute-b.minute);
 
     this._applyBandRect();
-    this._applyBlend(new Date());
-    this._resetWrapPositions();
+    this._applyBlend(new Date(), true);
   }
 
   resizeToRect(sceneRectPx){
     this.rect = sceneRectPx;
     this._applyBandRect();
-    this._cover(this.a, this.bandRect);
-    this._cover(this.b, this.bandRect);
-    this._resetWrapPositions();
+
+    // resize tiling sprites to band
+    this.a.width = this.bandRect.w;
+    this.a.height = this.bandRect.h;
+    this.b.width = this.bandRect.w;
+    this.b.height = this.bandRect.h;
+
+    // position by yAlign
+    this.a.x = this.bandRect.x;
+    this.b.x = this.bandRect.x;
+    this.a.y = this._computeBandY(this.bandRect);
+    this.b.y = this._computeBandY(this.bandRect);
+
+    // re-apply tiling scales if textures already set
+    this._applyTilingScale(this.a);
+    this._applyTilingScale(this.b);
   }
 
   update(now, dtSec){
     if(!this._enabled || !this._kfs.length) return;
 
-    // time blend
-    this._applyBlend(now);
+    // 1) crossfade by time (alpha sum stays constant)
+    this._applyBlend(now, false);
 
-    // move right -> left
-    this._x -= this._speed * dtSec;
+    // 2) scroll left
+    this._scrollX -= this._speed * dtSec;
 
-    const w = this.a.width;
-    if(w > 0){
-      // wrap when fully out of left
-      while(this._x <= -w) this._x += w;
-
-      this.a.x = this.bandRect.x + this._x;
-      this.b.x = this.bandRect.x + this._x + w;
-
-      this.a.y = this._computeY(this.a, this.bandRect);
-      this.b.y = this._computeY(this.b, this.bandRect);
-    }
+    // apply scroll to both layers so they stay aligned
+    this.a.tilePosition.x = this._scrollX;
+    this.b.tilePosition.x = this._scrollX;
   }
+
+  /* ---------- internals ---------- */
 
   _applyBandRect(){
     const r = this.rect;
 
-    // default: full scene rect
     if(!this._bandRectPct){
       this.bandRect = { x:r.x, y:r.y, w:r.w, h:r.h };
       return;
@@ -117,18 +128,16 @@ class CloudLayer {
     this.bandRect = { x, y: y + yOffset, w, h };
   }
 
-  _computeY(sprite, bandRect){
-    if(this._yAlign === "top"){
-      return bandRect.y;
-    }
-    if(this._yAlign === "bottom"){
-      return bandRect.y + (bandRect.h - sprite.height);
-    }
-    // center
-    return bandRect.y + (bandRect.h - sprite.height) / 2;
+  _computeBandY(bandRect){
+    // yAlign controls how band is anchored relative to itself (mostly for consistency)
+    // since TilingSprite height equals bandRect.h, top/center/bottom ends up same,
+    // but we keep it for future flexibility
+    if(this._yAlign === "top") return bandRect.y;
+    if(this._yAlign === "bottom") return bandRect.y;
+    return bandRect.y;
   }
 
-  _applyBlend(now){
+  _applyBlend(now, force){
     const kfs = this._kfs;
     if(!kfs.length) return;
 
@@ -148,44 +157,33 @@ class CloudLayer {
     const t = (mm - m0) / (m1 - m0);
     const s = CloudManager._smoothstep(Math.max(0, Math.min(1, t)));
 
-    const tex0 = this._texByUrl.get(k0.url);
-    const tex1 = this._texByUrl.get(k1.url);
-
-    if(this.a.texture !== tex0){
-      this.a.texture = tex0;
-      this._cover(this.a, this.bandRect);
-      this._resetWrapPositions();
+    // ✅ set textures only when needed (prevents flicker)
+    if(force || this._lastTexUrlA !== k0.url){
+      this._lastTexUrlA = k0.url;
+      this.a.texture = this._texByUrl.get(k0.url);
+      this._applyTilingScale(this.a);
     }
-    if(this.b.texture !== tex1){
-      this.b.texture = tex1;
-      this._cover(this.b, this.bandRect);
-      this._resetWrapPositions();
+    if(force || this._lastTexUrlB !== k1.url){
+      this._lastTexUrlB = k1.url;
+      this.b.texture = this._texByUrl.get(k1.url);
+      this._applyTilingScale(this.b);
     }
 
+    // ✅ alpha sum stays constant == baseAlpha (no “drop”)
     this.a.alpha = (1 - s) * this._baseAlpha;
     this.b.alpha = s * this._baseAlpha;
   }
 
-  _cover(sprite, bandRect){
-    if(!sprite.texture?.width) return;
+  _applyTilingScale(tilingSprite){
+    const tex = tilingSprite.texture;
+    if(!tex?.width) return;
 
-    const tw = sprite.texture.width;
-    const th = sprite.texture.height;
+    // cover within bandRect, then multiply by profile scale
+    const tw = tex.width;
+    const th = tex.height;
 
-    // object-fit: cover within band rect
-    const s = Math.max(bandRect.w / tw, bandRect.h / th) * this._scale;
-    sprite.scale.set(s);
-  }
-
-  _resetWrapPositions(){
-    this._x = 0;
-    const w = this.a.width || 0;
-
-    this.a.x = this.bandRect.x;
-    this.b.x = this.bandRect.x + w;
-
-    this.a.y = this._computeY(this.a, this.bandRect);
-    this.b.y = this._computeY(this.b, this.bandRect);
+    const s = Math.max(this.bandRect.w / tw, this.bandRect.h / th) * this._scale;
+    tilingSprite.tileScale.set(s);
   }
 }
 
@@ -197,10 +195,9 @@ export class CloudManager {
     this._profileName = "none";
     this._enabled = false;
 
-    // preload textures referenced by config
     this._texByUrl = new Map();
 
-    // 2 layers: far (behind) then near (front)
+    // 2 layers: far behind near
     this.layerFar = new CloudLayer(this.container);
     this.layerNear = new CloudLayer(this.container);
 
@@ -214,7 +211,6 @@ export class CloudManager {
     this._profiles = cloudConfig.profiles || {};
     this._profileName = cloudConfig.defaultProfile || "none";
 
-    // collect URLs
     const allUrls = new Set();
     for(const p of Object.values(this._profiles)){
       const layers = p?.layers || [];
@@ -225,7 +221,6 @@ export class CloudManager {
       }
     }
 
-    // preload all textures once
     const urls = [...allUrls];
     await Promise.all(urls.map(async (u)=>{
       const tex = await PIXI.Assets.load(u);
@@ -247,7 +242,6 @@ export class CloudManager {
     }
 
     const layers = p.layers || [];
-    // convention: [0]=far, [1]=near
     this.layerFar.setProfileLayer(layers[0] || null);
     this.layerNear.setProfileLayer(layers[1] || null);
 
@@ -277,3 +271,4 @@ export class CloudManager {
     return t*t*(3-2*t);
   }
 }
+
