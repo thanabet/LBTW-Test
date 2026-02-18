@@ -8,7 +8,7 @@
         {
           "name": "far",
           "speedPxPerSec": 4,
-          "scale": 0.8,
+          "scale": 0.2,
           "baseAlpha": 0.55,
           "bandRectPct": { "x": 0, "y": 18, "w": 100, "h": 70 },
           "yAlign": "center",
@@ -23,7 +23,7 @@
         {
           "name": "near",
           "speedPxPerSec": 10,
-          "scale": 0.8,
+          "scale": 2,
           "baseAlpha": 0.85,
           "bandRectPct": { "x": 0, "y": 0, "w": 100, "h": 45 },
           "yAlign": "top",
@@ -77,6 +77,7 @@
 
   "defaultProfile": "none"
 }
+
 
 
 
