@@ -11,7 +11,7 @@
           "scale": 0.98,
           "baseAlpha": 0.55,
           "bandRectPct": { "x": 0, "y": 0, "w": 100, "h": 45 },
-          "yAlign": "top",
+          "yAlign": "center",
           "yOffsetPct": -2,
           "keyframes": [
             { "time": "06:00", "src": "./assets/clouds/far_few_0600.png" },
@@ -26,7 +26,7 @@
           "scale": 1.08,
           "baseAlpha": 0.85,
           "bandRectPct": { "x": 0, "y": 18, "w": 100, "h": 70 },
-          "yAlign": "center",
+          "yAlign": "top",
           "yOffsetPct": 3,
           "keyframes": [
             { "time": "06:00", "src": "./assets/clouds/near_few_0600.png" },
@@ -47,7 +47,7 @@
           "scale": 1.02,
           "baseAlpha": 0.75,
           "bandRectPct": { "x": 0, "y": 0, "w": 100, "h": 55 },
-          "yAlign": "top",
+          "yAlign": "center",
           "yOffsetPct": 0,
           "keyframes": [
             { "time": "06:00", "src": "./assets/clouds/far_overcast_0600.png" },
@@ -62,7 +62,7 @@
           "scale": 1.12,
           "baseAlpha": 0.95,
           "bandRectPct": { "x": 0, "y": 10, "w": 100, "h": 90 },
-          "yAlign": "center",
+          "yAlign": "top",
           "yOffsetPct": 6,
           "keyframes": [
             { "time": "06:00", "src": "./assets/clouds/near_overcast_0600.png" },
@@ -77,3 +77,4 @@
 
   "defaultProfile": "none"
 }
+
