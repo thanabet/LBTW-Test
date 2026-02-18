@@ -12,6 +12,7 @@
           "speedPxPerSec": 4,
           "scale": 0.6,
           "baseAlpha": 0.55,
+          "overlapPx": 6,
 
           "bandRectPct": { "x": 0, "y": 28, "w": 100, "h": 70 },
           "yAlign": "center",
@@ -29,6 +30,7 @@
           "speedPxPerSec": 10,
           "scale": 1.15,
           "baseAlpha": 0.90,
+          "overlapPx": 6,
 
           "bandRectPct": { "x": 0, "y": 0, "w": 100, "h": 45 },
           "yAlign": "top",
@@ -87,6 +89,7 @@
 
   "defaultProfile": "none"
 }
+
 
 
 
