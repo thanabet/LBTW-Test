@@ -1,6 +1,8 @@
 {
   "profiles": {
-    "none": { "enabled": false },
+    "none": { 
+      "enabled": false 
+    },
 
     "few": {
       "enabled": true,
@@ -8,11 +10,13 @@
         {
           "name": "far",
           "speedPxPerSec": 4,
-          "scale": 0.98,
+          "scale": 0.90,
           "baseAlpha": 0.55,
-          "bandRectPct": { "x": 0, "y": 18, "w": 100, "h": 70 },
+
+          "bandRectPct": { "x": 0, "y": 28, "w": 100, "h": 70 },
           "yAlign": "center",
-          "yOffsetPct": 3,
+          "yOffsetPct": 4,
+
           "keyframes": [
             { "time": "06:00", "src": "./assets/clouds/far_few_0600.png" },
             { "time": "12:00", "src": "./assets/clouds/far_few_0600.png" },
@@ -23,11 +27,13 @@
         {
           "name": "near",
           "speedPxPerSec": 10,
-          "scale": 1.08,
-          "baseAlpha": 0.85,
+          "scale": 1.15,
+          "baseAlpha": 0.90,
+
           "bandRectPct": { "x": 0, "y": 0, "w": 100, "h": 45 },
           "yAlign": "top",
           "yOffsetPct": -2,
+
           "keyframes": [
             { "time": "06:00", "src": "./assets/clouds/near_few_0600.png" },
             { "time": "12:00", "src": "./assets/clouds/near_few_0600.png" },
@@ -44,11 +50,13 @@
         {
           "name": "far",
           "speedPxPerSec": 6,
-          "scale": 1.02,
-          "baseAlpha": 0.75,
-          "bandRectPct": { "x": 0, "y": 0, "w": 100, "h": 55 },
+          "scale": 0.95,
+          "baseAlpha": 0.70,
+
+          "bandRectPct": { "x": 0, "y": 35, "w": 100, "h": 75 },
           "yAlign": "center",
-          "yOffsetPct": 0,
+          "yOffsetPct": 5,
+
           "keyframes": [
             { "time": "06:00", "src": "./assets/clouds/far_overcast_0600.png" },
             { "time": "12:00", "src": "./assets/clouds/far_overcast_0600.png" },
@@ -59,11 +67,13 @@
         {
           "name": "near",
           "speedPxPerSec": 14,
-          "scale": 1.12,
+          "scale": 1.25,
           "baseAlpha": 0.95,
-          "bandRectPct": { "x": 0, "y": 10, "w": 100, "h": 90 },
+
+          "bandRectPct": { "x": 0, "y": 0, "w": 100, "h": 55 },
           "yAlign": "top",
-          "yOffsetPct": 6,
+          "yOffsetPct": -1,
+
           "keyframes": [
             { "time": "06:00", "src": "./assets/clouds/near_overcast_0600.png" },
             { "time": "12:00", "src": "./assets/clouds/near_overcast_0600.png" },
@@ -77,6 +87,7 @@
 
   "defaultProfile": "none"
 }
+
 
 
 
