@@ -6,7 +6,6 @@ const TEMPLATE_W = 1595;
 const TEMPLATE_H = 3457;
 const RATIO = TEMPLATE_H / TEMPLATE_W;
 
-// + = เลื่อนลง, - = เลื่อนขึ้น
 const STAGE_Y_OFFSET_PX = 20;
 
 async function loadJSON(url){
@@ -90,11 +89,15 @@ async function boot(){
   const cloudCfg = await loadJSON("./data/cloud_config.json");
   await scene.initClouds(cloudCfg);
 
+  // --- RAIN (NEW) ---
+  const rainCfg = await loadJSON("./data/rain_config.json");
+  await scene.initRain(rainCfg);
+
   // first layout
   scene.resize();
   hud.resize();
 
-  // ✅ IMPORTANT: set initial clouds instantly (no fade-in on refresh)
+  // set initial clouds instantly (no fade-in on refresh)
   const now0 = new Date();
   const initialState = story.computeStateAt(now0);
   const initialProfile =
@@ -113,10 +116,8 @@ async function boot(){
 
     const nextState = story.computeStateAt(now);
 
-    // scene update (sky + clouds)
     scene.update(now, dtSec, nextState);
 
-    // HUD update
     hud.setState(nextState);
     hud.setCalendar(now);
     hud.setClockHands(now);

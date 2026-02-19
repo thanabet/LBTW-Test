@@ -1,7 +1,7 @@
 import { SkyManager } from "./skyManager.js";
 import { CloudManager } from "./cloudManager.js";
+import { RainManager } from "./rainManager.js";
 
-// ✅ ปรับความยาว fade ตรงนี้ (วินาที)
 const CLOUD_PROFILE_FADE_SEC = 60.0;
 
 export class SceneEngine {
@@ -13,27 +13,29 @@ export class SceneEngine {
 
     this.sky = null;
 
-    // cloud containers
+    // cloud crossfade system
     this.cloudContainer = null;
     this.cloudLayerA = null;
     this.cloudLayerB = null;
-
-    // two cloud managers (for crossfade)
     this.cloudsA = null;
     this.cloudsB = null;
 
-    this._activeCloud = "A"; // "A" or "B"
-
-    // track current vs target
-    this._currentCloudProfile = "none"; // currently visible profile
-    this._targetCloudProfile = "none";  // target profile during fade
-
+    this._activeCloud = "A";
+    this._currentCloudProfile = "none";
+    this._targetCloudProfile = "none";
     this._xfading = false;
     this._fadeT = 0;
     this._fadeDur = CLOUD_PROFILE_FADE_SEC;
 
-    // ✅ NEW: prevent fade on first load
     this._hasSetInitialCloud = false;
+
+    // rain layer (above clouds)
+    this.rainContainer = null;
+    this.rain = null;
+    this._rainReady = false;
+
+    // ✅ remember current lightning state to avoid spamming setters
+    this._lastLightningEnabled = null;
 
     this.skyContainer = null;
     this.sceneRectPx = null;
@@ -66,9 +68,12 @@ export class SceneEngine {
     // stage layers
     this.skyContainer = new PIXI.Container();
     this.cloudContainer = new PIXI.Container();
+    this.rainContainer = new PIXI.Container();
 
+    // order: sky -> clouds -> rain
     this.app.stage.addChild(this.skyContainer);
     this.app.stage.addChild(this.cloudContainer);
+    this.app.stage.addChild(this.rainContainer);
 
     // 2 alpha layers for clouds
     this.cloudLayerA = new PIXI.Container();
@@ -86,7 +91,6 @@ export class SceneEngine {
 
     this.sky = new SkyManager(this.skyContainer);
 
-    // support: initSky([urls]) or initSky({urls,keyframes,mode})
     if(Array.isArray(arg)){
       await this.sky.load({ urls: arg });
     } else {
@@ -97,14 +101,12 @@ export class SceneEngine {
   async initClouds(cloudConfig){
     await this._ensurePixi();
 
-    // create two managers so we can crossfade between profiles
     this.cloudsA = new CloudManager(this.cloudLayerA);
     this.cloudsB = new CloudManager(this.cloudLayerB);
 
     await this.cloudsA.loadConfig(cloudConfig);
     await this.cloudsB.loadConfig(cloudConfig);
 
-    // start safe
     this.cloudsA.setProfile("none");
     this.cloudsB.setProfile("none");
 
@@ -115,13 +117,27 @@ export class SceneEngine {
     this._fadeT = 0;
     this._fadeDur = CLOUD_PROFILE_FADE_SEC;
 
-    // ✅ NEW
     this._hasSetInitialCloud = false;
 
-    // if already resized, apply rect
     if(this.sceneRectPx){
       this.cloudsA.resizeToRect(this.sceneRectPx);
       this.cloudsB.resizeToRect(this.sceneRectPx);
+    }
+  }
+
+  async initRain(rainConfig){
+    await this._ensurePixi();
+
+    this.rain = new RainManager(this.rainContainer);
+    await this.rain.load(rainConfig);
+
+    this.rain.setEnabled(false);
+    this._rainReady = true;
+
+    this._lastLightningEnabled = null;
+
+    if(this.sceneRectPx){
+      this.rain.resizeToRect(this.sceneRectPx);
     }
   }
 
@@ -131,20 +147,14 @@ export class SceneEngine {
   }
 
   _easeInOut(t){
-    // smoothstep
     return t*t*(3 - 2*t);
   }
 
-  /**
-   * ✅ NEW: Set initial cloud profile instantly (NO FADE)
-   * Call this once after story is ready, before starting tick loop.
-   */
   setInitialCloudProfile(profile){
     if(!this.cloudsA || !this.cloudsB) return;
 
     const p = this._normalizeProfile(profile);
 
-    // Put initial profile on the visible layer (A), keep B hidden
     this.cloudsA.setProfile(p);
     this.cloudsB.setProfile(p);
 
@@ -166,19 +176,16 @@ export class SceneEngine {
     this._hasSetInitialCloud = true;
   }
 
-  // Start a smooth transition only when target actually changes
   _transitionCloudProfile(nextProfile){
     if(!this.cloudsA || !this.cloudsB) return;
 
     const next = this._normalizeProfile(nextProfile);
 
-    // ✅ if initial not set yet, DO NOT FADE — just snap
     if(!this._hasSetInitialCloud){
       this.setInitialCloudProfile(next);
       return;
     }
 
-    // If we're already aiming for this target, do nothing.
     if(next === this._targetCloudProfile) return;
 
     this._targetCloudProfile = next;
@@ -191,11 +198,9 @@ export class SceneEngine {
       ? { layer: this.cloudLayerB, mgr: this.cloudsB }
       : { layer: this.cloudLayerA, mgr: this.cloudsA };
 
-    // load new profile into the back layer
     back.mgr.setProfile(next);
     if(this.sceneRectPx) back.mgr.resizeToRect(this.sceneRectPx);
 
-    // start fade from current visual state
     back.layer.alpha = 0;
     front.layer.alpha = 1;
 
@@ -215,7 +220,6 @@ export class SceneEngine {
 
     this.sceneRectPx = this._percentRectToPx(this.layout.sceneRect, w, h);
 
-    // mask only scene rect
     if(!this._maskG){
       this._maskG = new PIXI.Graphics();
       this.app.stage.addChild(this._maskG);
@@ -227,37 +231,63 @@ export class SceneEngine {
     this._maskG.fill({ color: 0xffffff, alpha: 1 });
 
     if(this.sky) this.sky.resizeToRect(this.sceneRectPx);
-
     if(this.cloudsA) this.cloudsA.resizeToRect(this.sceneRectPx);
     if(this.cloudsB) this.cloudsB.resizeToRect(this.sceneRectPx);
+
+    if(this.rain) this.rain.resizeToRect(this.sceneRectPx);
+  }
+
+  // rain override:
+  // storyState.rain or storyState.state.rain (true/false/undefined)
+  _resolveRainEnabled(profile, storyState){
+    const override =
+      (storyState?.rain !== undefined) ? storyState.rain :
+      (storyState?.state?.rain !== undefined) ? storyState.state.rain :
+      undefined;
+
+    if(override === true) return true;
+    if(override === false) return false;
+
+    const p = String(profile).trim().toLowerCase();
+    return (p === "overcast");
+  }
+
+  // ✅ NEW: lightning override:
+  // storyState.lightning or storyState.state.lightning (true/false/undefined)
+  // default: ON (but only meaningful when rain is visible)
+  _resolveLightningEnabled(storyState){
+    const override =
+      (storyState?.lightning !== undefined) ? storyState.lightning :
+      (storyState?.state?.lightning !== undefined) ? storyState.state.lightning :
+      undefined;
+
+    if(override === true) return true;
+    if(override === false) return false;
+
+    return true; // default ON
   }
 
   update(now, dtSec, storyState){
-    // sky always updates by time
     if(this.sky) this.sky.updateByTime(now);
 
-    // read cloudProfile from either flat or nested shape
     const profile =
       storyState?.cloudProfile ??
       storyState?.state?.cloudProfile ??
       "none";
 
-    // start transition if needed
     this._transitionCloudProfile(profile);
 
-    // update both managers so motion continues during fade
+    // update clouds motion
     if(this.cloudsA) this.cloudsA.update(now, dtSec);
     if(this.cloudsB) this.cloudsB.update(now, dtSec);
 
-    // handle crossfade alpha
+    // cloud crossfade
     if(this._xfading){
       this._fadeT += dtSec;
-
       const dur = Math.max(0.001, this._fadeDur);
       const t = Math.max(0, Math.min(1, this._fadeT / dur));
       const s = this._easeInOut(t);
 
-      // fade from active -> inactive
       if(this._activeCloud === "A"){
         this.cloudLayerA.alpha = 1 - s;
         this.cloudLayerB.alpha = s;
@@ -267,16 +297,10 @@ export class SceneEngine {
       }
 
       if(t >= 1){
-        // finalize
         this._xfading = false;
-
-        // swap active layer
         this._activeCloud = (this._activeCloud === "A") ? "B" : "A";
-
-        // now the target becomes current
         this._currentCloudProfile = this._targetCloudProfile;
 
-        // snap alphas
         if(this._activeCloud === "A"){
           this.cloudLayerA.alpha = 1;
           this.cloudLayerB.alpha = 0;
@@ -285,6 +309,23 @@ export class SceneEngine {
           this.cloudLayerA.alpha = 0;
         }
       }
+    }
+
+    // rain + lightning auto/override
+    if(this._rainReady && this.rain){
+      const rainOn = this._resolveRainEnabled(profile, storyState);
+      this.rain.setEnabled(rainOn);
+
+      // lightning can be overridden; if rain is off it doesn't matter but safe
+      const lightningOn = this._resolveLightningEnabled(storyState);
+
+      // avoid calling setter every frame
+      if(this._lastLightningEnabled !== lightningOn){
+        this.rain.setLightningEnabled(lightningOn);
+        this._lastLightningEnabled = lightningOn;
+      }
+
+      this.rain.update(dtSec);
     }
   }
 }
