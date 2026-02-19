@@ -1,16 +1,16 @@
 // src/audio/audioManager.js
-// Stable + iOS-friendly:
-// - SFX uses WebAudio (buffers)
-// - MUSIC uses HTMLAudio streaming (no heavy decode)
+// iOS-stable version:
+// - SFX uses WebAudio (buffers) ✅
+// - MUSIC uses ONE HTMLAudio element (streaming) ✅
+//   - fade out -> swap src -> play -> fade in
 // Fixes:
-// - iOS: play() may "succeed" but not actually playing yet -> wait for canplay/playing BEFORE crossfade
-// - add toggle lock to prevent rapid re-entry messing state
-// - robust fade helpers
+// - "เปิดรอบสองแล้วเงียบ" (iOS dual-audio/crossfade bug)
+// - UI lies (enabled but silent): toggleMusic returns false if playback didn't actually start
 
 function clamp01(x){ return Math.max(0, Math.min(1, x)); }
 
-function once(el, evt, timeoutMs = 2000){
-  return new Promise((resolve, reject) => {
+function waitEvent(el, evt, timeoutMs = 2000){
+  return new Promise((resolve) => {
     let done = false;
     const on = () => {
       if(done) return;
@@ -27,7 +27,6 @@ function once(el, evt, timeoutMs = 2000){
       if(done) return;
       done = true;
       cleanup();
-      // don't hard fail; just continue
       resolve(false);
     }, timeoutMs);
   });
@@ -41,17 +40,19 @@ export class AudioManager {
       musicBase:this.cfg.musicBasePath|| "assets/audio/music/"
     };
 
-    // unlock flags
-    this._unlockedSfx = false;
-    this._unlockedMusic = false;
-
     // enabled flags
     this._sfxEnabled = false;
     this._musicEnabled = false;
 
+    // unlock flags
+    this._unlockedSfx = false;
+    this._unlockedMusic = false;
+
     // volumes
     this._musicVol = clamp01(this.cfg.defaults?.musicVolume ?? 0.55);
     this._sfxVol   = clamp01(this.cfg.defaults?.sfxVolume ?? 1.0);
+
+    this._musicFadeSec = Math.max(0.01, Number(this.cfg.defaults?.musicFadeSec ?? 1.2));
 
     // WebAudio for SFX
     this._ctx = null;
@@ -59,22 +60,16 @@ export class AudioManager {
     this._buffers = new Map();
     this._loopNodes = new Map();
 
-    // HTMLAudio for Music (two players for crossfade)
-    this._musicA = new Audio();
-    this._musicB = new Audio();
-    for (const a of [this._musicA, this._musicB]) {
-      a.loop = true;
-      a.preload = "auto";
-      a.crossOrigin = "anonymous";
-      a.volume = 0;
-      a.muted = false;
-      // iOS hint
-      a.playsInline = true;
-    }
-    this._musicIsA = true;
-    this._musicKey = null;
+    // ONE HTMLAudio for Music (most stable on iOS)
+    this._musicEl = new Audio();
+    this._musicEl.loop = true;
+    this._musicEl.preload = "auto";
+    this._musicEl.crossOrigin = "anonymous";
+    this._musicEl.volume = 0;
+    this._musicEl.muted = false;
+    this._musicEl.playsInline = true;
 
-    // toggle lock (prevents “กดรัวแล้ว state เพี้ยน”)
+    this._musicKey = null;
     this._musicToggleLock = false;
 
     // Auto music table
@@ -93,9 +88,6 @@ export class AudioManager {
 
     // rain follow cloudProfile
     this._rainActive = false;
-
-    // fade default
-    this._musicFadeSec = Math.max(0.01, Number(this.cfg.defaults?.musicFadeSec ?? 1.2));
   }
 
   isSfxEnabled(){ return this._sfxEnabled; }
@@ -121,7 +113,7 @@ export class AudioManager {
       try { await this._ctx.resume(); } catch(_) {}
     }
 
-    // tiny silent blip to fully unlock some iOS versions
+    // tiny silent blip (iOS unlock helper)
     try{
       const buf = this._ctx.createBuffer(1, 1, 22050);
       const src = this._ctx.createBufferSource();
@@ -137,28 +129,17 @@ export class AudioManager {
   /* ---------------- unlock MUSIC (HTMLAudio) ---------------- */
 
   async _ensureMusicUnlocked(){
+    // With single HTMLAudio, "unlock" basically means: a play() succeeded at least once in a user gesture.
     if(this._unlockedMusic) return true;
 
-    // Must be inside a user gesture (HUD tap). We'll attempt a play() on current src if exists.
-    const a = this._musicA;
     try{
-      // If no src yet, just mark as not unlocked; unlock will be confirmed when first real play happens.
-      if(!a.src){
-        this._unlockedMusic = true; // allow first real play attempt
-        return true;
-      }
-
-      a.volume = 0;
-      const p = a.play();
-      if(p && typeof p.then === "function"){
-        await p;
-      }
-      a.pause();
+      // If no src yet, we can't test. We'll allow first real play attempt to set unlocked.
       this._unlockedMusic = true;
+      return true;
     }catch(_){
       this._unlockedMusic = false;
+      return false;
     }
-    return this._unlockedMusic;
   }
 
   /* ---------------- toggles ---------------- */
@@ -183,24 +164,33 @@ export class AudioManager {
   }
 
   async toggleMusic(){
-    // prevent re-entry (double tap / iOS quirks)
     if(this._musicToggleLock) return this._musicEnabled;
     this._musicToggleLock = true;
 
     try{
-      this._musicEnabled = !this._musicEnabled;
+      const next = !this._musicEnabled;
 
-      if(this._musicEnabled){
+      if(next){
+        this._musicEnabled = true;
         await this._ensureMusicUnlocked();
-        // apply desired (auto/override)
-        await this._applyDesiredMusic(new Date(), { forcePlay: true });
-      } else {
-        await this.stopMusic({ fadeSec: 0.25 });
-      }
 
-      return this._musicEnabled;
+        // try to start desired music
+        const ok = await this._applyDesiredMusic(new Date(), { forcePlay: true });
+
+        if(!ok){
+          // if actually didn't start, revert to OFF so HUD slash stays correct
+          this._musicEnabled = false;
+          await this.stopMusic({ fadeSec: 0.15 });
+          return false;
+        }
+
+        return true;
+      } else {
+        this._musicEnabled = false;
+        await this.stopMusic({ fadeSec: 0.25 });
+        return false;
+      }
     } finally {
-      // unlock after a short window
       setTimeout(()=>{ this._musicToggleLock = false; }, 450);
     }
   }
@@ -335,80 +325,67 @@ export class AudioManager {
     }, (dur*1000)+120);
   }
 
-  /* ---------------- MUSIC (HTMLAudio streaming) ---------------- */
+  /* ---------------- MUSIC (single HTMLAudio) ---------------- */
 
-  async playMusic(key, { fadeSec=1.2, forcePlay=false } = {}){
-    if(!this._musicEnabled) return;
-    if(!this._unlockedMusic && !forcePlay) return;
+  async playMusic(key, { fadeSec=1.2 } = {}){
+    if(!this._musicEnabled) return false;
 
-    if(this._musicKey === key) return;
+    if(this._musicKey === key && !this._musicEl.paused){
+      // already playing desired
+      return true;
+    }
 
     const url = this._musicUrl(key);
-    if(!url) return;
+    if(!url) return false;
 
-    const incoming = this._musicIsA ? this._musicB : this._musicA;
-    const outgoing = this._musicIsA ? this._musicA : this._musicB;
+    const dur = Math.max(0.01, fadeSec);
 
-    // setup incoming
-    incoming.pause();
-    incoming.muted = false;
-    incoming.loop = true;
-    incoming.preload = "auto";
-    incoming.src = url;
+    // fade out if something is playing
+    if(!this._musicEl.paused && this._musicEl.volume > 0.001){
+      await this._fadeTo(this._musicEl, 0, dur);
+      try{ this._musicEl.pause(); }catch(_){}
+    }
 
-    // iOS: sometimes currentTime=0 before metadata loaded can throw or be ignored; set after canplay
-    incoming.volume = 0;
-
-    // Ensure browser starts fetching
-    try{ incoming.load(); }catch(_){}
-
-    // Wait until it is actually ready (prevents "open again but silent")
-    await once(incoming, "canplay", 1800);
-
-    // Try play (must be inside user gesture for first time; subsequent usually ok)
+    // swap track
     try{
-      const p = incoming.play();
+      this._musicEl.src = url;
+      this._musicEl.loop = true;
+      this._musicEl.preload = "auto";
+      this._musicEl.volume = 0;
+      try{ this._musicEl.load(); }catch(_){}
+    }catch(_){
+      return false;
+    }
+
+    // wait ready (avoid silent play on iOS)
+    await waitEvent(this._musicEl, "canplay", 2200);
+
+    // play (this is where iOS may block if not in user gesture)
+    try{
+      const p = this._musicEl.play();
       if(p && typeof p.then === "function") await p;
       this._unlockedMusic = true;
     }catch(_){
-      return; // blocked -> remain silent
+      return false;
     }
 
-    // Wait for real playback start (super important on iOS)
-    await once(incoming, "playing", 1200);
+    // wait real start (best effort)
+    await waitEvent(this._musicEl, "playing", 1200);
 
-    // Now safe to reset time (some iOS likes this after playing)
-    try{ incoming.currentTime = 0; }catch(_){}
+    // fade in
+    await this._fadeTo(this._musicEl, this._musicVol, dur);
 
-    // crossfade
-    const dur = Math.max(0.01, fadeSec);
-    await this._crossfade(outgoing, incoming, dur);
-
-    // finalize
-    try{ outgoing.pause(); }catch(_){}
-    outgoing.volume = 0;
-
-    this._musicIsA = !this._musicIsA;
     this._musicKey = key;
+    return true;
   }
 
   async stopMusic({ fadeSec=0.6 } = {}){
     const dur = Math.max(0.01, fadeSec);
-    const a = this._musicA;
-    const b = this._musicB;
 
-    await Promise.all([
-      this._fadeTo(a, 0, dur),
-      this._fadeTo(b, 0, dur)
-    ]);
+    await this._fadeTo(this._musicEl, 0, dur);
 
-    try{ a.pause(); }catch(_){}
-    try{ b.pause(); }catch(_){}
-
-    // keep src (don’t clear) – clearing sometimes causes weird lock on iOS
-    // Just reset time softly
-    try{ a.currentTime = 0; }catch(_){}
-    try{ b.currentTime = 0; }catch(_){}
+    try{ this._musicEl.pause(); }catch(_){}
+    try{ this._musicEl.currentTime = 0; }catch(_){}
 
     this._musicKey = null;
   }
@@ -429,14 +406,6 @@ export class AudioManager {
 
       requestAnimationFrame(step);
     });
-  }
-
-  async _crossfade(outgoing, incoming, sec){
-    const toIn = this._musicVol;
-    await Promise.all([
-      this._fadeTo(incoming, toIn, sec),
-      this._fadeTo(outgoing, 0, sec)
-    ]);
   }
 
   /* ---------------- STORY + AUTO ---------------- */
@@ -460,16 +429,14 @@ export class AudioManager {
       this._storyMusicOverride = musicTrack; // string or null
     }
 
-    // Apply desired music (only if enabled)
+    // Apply desired music
     if(this._musicEnabled){
-      // If iOS still locked, wait for user toggle; don't spam play()
-      if(this._unlockedMusic){
-        await this._applyDesiredMusic(now, { forcePlay: false });
-      }
+      // don't spam play calls if music is locked; user gesture will fix
+      await this._applyDesiredMusic(now);
     }
   }
 
-  async _applyDesiredMusic(now, { forcePlay=false } = {}){
+  async _applyDesiredMusic(now){
     let desired = null;
 
     if(typeof this._storyMusicOverride === "string"){
@@ -481,11 +448,18 @@ export class AudioManager {
 
     if(!desired){
       if(this._musicKey) await this.stopMusic({ fadeSec: 0.8 });
-      return;
+      return false;
     }
 
     if(desired !== this._musicKey){
-      await this.playMusic(desired, { fadeSec: this._musicFadeSec, forcePlay });
+      return await this.playMusic(desired, { fadeSec: this._musicFadeSec });
     }
+
+    // ensure volume if somehow drifted
+    if(!this._musicEl.paused && this._musicEl.volume < (this._musicVol * 0.8)){
+      this._musicEl.volume = this._musicVol;
+    }
+
+    return true;
   }
 }
