@@ -1,6 +1,8 @@
 import { SkyManager } from "./skyManager.js";
 import { CloudManager } from "./cloudManager.js";
 
+const CLOUD_PROFILE_FADE_SEC = 3.0; // ✅ ปรับความเนียนตรงนี้ (วินาที)
+
 export class SceneEngine {
   constructor({ hostEl, sceneLayout }){
     this.hostEl = hostEl;
@@ -9,16 +11,27 @@ export class SceneEngine {
     this.app = null;
 
     this.sky = null;
-    this.clouds = null;
+
+    // ✅ cloud crossfade system
+    this.cloudCfg = null;
+
+    this.cloudContainer = null;      // parent
+    this.cloudLayerA = null;         // PIXI.Container (alpha)
+    this.cloudLayerB = null;         // PIXI.Container (alpha)
+    this.cloudsA = null;             // CloudManager
+    this.cloudsB = null;             // CloudManager
+
+    this._activeCloud = "A";         // "A" or "B"
+    this._lastCloudProfile = "none";
+
+    this._xfading = false;
+    this._fadeT = 0;                 // seconds
+    this._fadeDur = CLOUD_PROFILE_FADE_SEC;
 
     this.skyContainer = null;
-    this.cloudContainer = null;
-
     this.sceneRectPx = null;
 
     this._maskG = null;
-
-    this._lastCloudProfile = null;
   }
 
   _percentRectToPx(rectPct, w, h){
@@ -42,11 +55,21 @@ export class SceneEngine {
     });
     this.hostEl.appendChild(this.app.canvas);
 
+    // layers
     this.skyContainer = new PIXI.Container();
     this.cloudContainer = new PIXI.Container();
 
     this.app.stage.addChild(this.skyContainer);
     this.app.stage.addChild(this.cloudContainer);
+
+    // ✅ prepare 2 cloud layers (alpha crossfade)
+    this.cloudLayerA = new PIXI.Container();
+    this.cloudLayerB = new PIXI.Container();
+    this.cloudContainer.addChild(this.cloudLayerA);
+    this.cloudContainer.addChild(this.cloudLayerB);
+
+    this.cloudLayerA.alpha = 1;
+    this.cloudLayerB.alpha = 0;
   }
 
   async initSky(arg){
@@ -63,20 +86,61 @@ export class SceneEngine {
 
   async initClouds(cloudConfig){
     await this._ensurePixi();
-    this.clouds = new CloudManager(this.cloudContainer);
-    await this.clouds.loadConfig(cloudConfig);
+
+    // store cfg for creating both managers
+    this.cloudCfg = cloudConfig;
+
+    // create two managers
+    this.cloudsA = new CloudManager(this.cloudLayerA);
+    this.cloudsB = new CloudManager(this.cloudLayerB);
+
+    await this.cloudsA.loadConfig(cloudConfig);
+    await this.cloudsB.loadConfig(cloudConfig);
+
+    // start both at none (safe)
+    this.cloudsA.setProfile("none");
+    this.cloudsB.setProfile("none");
+
+    this._activeCloud = "A";
+    this._lastCloudProfile = "none";
+    this._xfading = false;
+    this._fadeT = 0;
+
+    // ensure sizing if we already have rect
+    if(this.sceneRectPx){
+      this.cloudsA.resizeToRect(this.sceneRectPx);
+      this.cloudsB.resizeToRect(this.sceneRectPx);
+    }
   }
 
-  setCloudProfile(profileName){
-    if(!this.clouds) return;
+  _normalizeProfile(p){
+    const s = (p && String(p).trim()) ? String(p).trim() : "none";
+    return s;
+  }
 
-    // ✅ normalize
-    const next = (profileName && String(profileName).trim()) ? String(profileName).trim() : "none";
-
+  // ✅ start smooth crossfade between profiles
+  _transitionCloudProfile(nextProfile){
+    const next = this._normalizeProfile(nextProfile);
     if(next === this._lastCloudProfile) return;
-    this._lastCloudProfile = next;
 
-    this.clouds.setProfile(next);
+    // determine front/back
+    const front = (this._activeCloud === "A") ? { layer:this.cloudLayerA, mgr:this.cloudsA } : { layer:this.cloudLayerB, mgr:this.cloudsB };
+    const back  = (this._activeCloud === "A") ? { layer:this.cloudLayerB, mgr:this.cloudsB } : { layer:this.cloudLayerA, mgr:this.cloudsA };
+
+    // set back to new profile, make it start invisible
+    back.mgr.setProfile(next);
+    if(this.sceneRectPx) back.mgr.resizeToRect(this.sceneRectPx);
+
+    back.layer.alpha = 0;
+    front.layer.alpha = 1;
+
+    this._xfading = true;
+    this._fadeT = 0;
+    this._fadeDur = CLOUD_PROFILE_FADE_SEC;
+
+    // swap target active after fade completes
+    this._pendingActive = (this._activeCloud === "A") ? "B" : "A";
+    this._lastCloudProfile = next;
   }
 
   resize(){
@@ -90,6 +154,7 @@ export class SceneEngine {
 
     this.sceneRectPx = this._percentRectToPx(this.layout.sceneRect, w, h);
 
+    // mask scene rect
     if(!this._maskG){
       this._maskG = new PIXI.Graphics();
       this.app.stage.addChild(this._maskG);
@@ -101,23 +166,63 @@ export class SceneEngine {
     this._maskG.fill({ color: 0xffffff, alpha: 1 });
 
     if(this.sky) this.sky.resizeToRect(this.sceneRectPx);
-    if(this.clouds) this.clouds.resizeToRect(this.sceneRectPx);
+
+    if(this.cloudsA) this.cloudsA.resizeToRect(this.sceneRectPx);
+    if(this.cloudsB) this.cloudsB.resizeToRect(this.sceneRectPx);
+  }
+
+  _easeInOut(t){
+    // smoothstep
+    return t*t*(3 - 2*t);
   }
 
   update(now, dtSec, storyState){
     // sky always by time
     if(this.sky) this.sky.updateByTime(now);
 
-    // ✅ IMPORTANT: support both shapes:
-    // - storyState.cloudProfile
-    // - storyState.state.cloudProfile  (nested)
+    // read cloudProfile from either flat or nested state
     const profile =
       storyState?.cloudProfile ??
       storyState?.state?.cloudProfile ??
       "none";
 
-    this.setCloudProfile(profile);
+    // trigger smooth transition if changed
+    this._transitionCloudProfile(profile);
 
-    if(this.clouds) this.clouds.update(now, dtSec);
+    // update both clouds while fading (so motion continues)
+    if(this.cloudsA) this.cloudsA.update(now, dtSec);
+    if(this.cloudsB) this.cloudsB.update(now, dtSec);
+
+    // handle fade
+    if(this._xfading){
+      this._fadeT += dtSec;
+      const t = Math.max(0, Math.min(1, this._fadeT / Math.max(0.001, this._fadeDur)));
+      const s = this._easeInOut(t);
+
+      if(this._activeCloud === "A"){
+        this.cloudLayerA.alpha = 1 - s;
+        this.cloudLayerB.alpha = s;
+      }else{
+        this.cloudLayerB.alpha = 1 - s;
+        this.cloudLayerA.alpha = s;
+      }
+
+      if(t >= 1){
+        // finalize
+        this._xfading = false;
+
+        // set active to the one that is now visible
+        this._activeCloud = this._pendingActive;
+
+        // optional: force the hidden layer alpha to 0 exactly
+        if(this._activeCloud === "A"){
+          this.cloudLayerA.alpha = 1;
+          this.cloudLayerB.alpha = 0;
+        }else{
+          this.cloudLayerB.alpha = 1;
+          this.cloudLayerA.alpha = 0;
+        }
+      }
+    }
   }
 }
