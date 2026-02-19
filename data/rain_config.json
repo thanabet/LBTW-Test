@@ -1,7 +1,8 @@
 {
   "frames": [
     "./assets/rain/rain_1.png",
-    "./assets/rain/rain_2.png"
+    "./assets/rain/rain_2.png",
+    "./assets/rain/rain_3.png"
     
   ],
   "durationsMs": [120, 120, 120],
@@ -12,4 +13,5 @@
     "maxIntervalSec": 35
   }
 }
+
 
