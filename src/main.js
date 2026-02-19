@@ -4,11 +4,9 @@ import { StoryEngine } from "./story/storyEngine.js";
 
 const TEMPLATE_W = 1595;
 const TEMPLATE_H = 3457;
-const RATIO = TEMPLATE_H / TEMPLATE_W; // ~2.167
+const RATIO = TEMPLATE_H / TEMPLATE_W;
 
-// ✅ ปรับค่าเดียวนี้เพื่อ “เลื่อน template ลง/ขึ้น”
-// + = เลื่อนลง (เพิ่มพื้นที่ท้องฟ้า/ครึ่งบนยาวขึ้น)
-// - = เลื่อนขึ้น (โชว์ in-room มากขึ้น)
+// + = เลื่อนลง, - = เลื่อนขึ้น
 const STAGE_Y_OFFSET_PX = 20;
 
 async function loadJSON(url){
@@ -23,11 +21,6 @@ function setVisualViewportHeight(){
   document.documentElement.style.setProperty("--vvh", `${h * 0.01}px`);
 }
 
-/**
- * ✅ จัด stage แบบ “กึ่งกลาง” แล้วค่อย offset ตามใจพี่มี่
- * - base: center (ทำให้รู้สึกใกล้ 50/50)
- * - offset: ปรับ framing ตามต้องการ
- */
 function setStageByRatio(){
   const vw = window.innerWidth;
   const vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
@@ -35,13 +28,9 @@ function setStageByRatio(){
   const stageH = vw * RATIO;
   document.documentElement.style.setProperty("--stage-h", `${stageH}px`);
 
-  // base = center
   let y = (vh - stageH) / 2;
-
-  // apply offset
   y += STAGE_Y_OFFSET_PX;
 
-  // clamp ไม่ให้เลื่อนจนเห็นขอบว่าง
   y = Math.min(0, y);
   y = Math.max(vh - stageH, y);
 
@@ -87,7 +76,7 @@ async function boot(){
   }
   window.addEventListener("resize", reflow);
 
-  // --- SKY (keyframes) ---
+  // --- SKY ---
   const skyCfg = await loadJSON("./data/sky_config.json");
   const urls = [...new Set(skyCfg.keyframes.map(k => k.src))];
 
@@ -97,7 +86,7 @@ async function boot(){
     mode: "keyframes"
   });
 
-  // --- CLOUDS (profiles + 2 layers) ---
+  // --- CLOUDS ---
   const cloudCfg = await loadJSON("./data/cloud_config.json");
   await scene.initClouds(cloudCfg);
 
@@ -105,26 +94,36 @@ async function boot(){
   scene.resize();
   hud.resize();
 
+  // ✅ IMPORTANT: set initial clouds instantly (no fade-in on refresh)
+  const now0 = new Date();
+  const initialState = story.computeStateAt(now0);
+  const initialProfile =
+    initialState?.cloudProfile ??
+    initialState?.state?.cloudProfile ??
+    "none";
+  scene.setInitialCloudProfile(initialProfile);
+
   let lastTs = performance.now();
 
   function tick(){
     const now = new Date();
     const ts = performance.now();
-    const dtSec = Math.min(0.05, (ts - lastTs) / 1000); // clamp กันกระตุก
+    const dtSec = Math.min(0.05, (ts - lastTs) / 1000);
     lastTs = ts;
 
     const nextState = story.computeStateAt(now);
 
-    // ✅ scene update (sky + clouds)
+    // scene update (sky + clouds)
     scene.update(now, dtSec, nextState);
 
-    // HUD (ของเดิม)
+    // HUD update
     hud.setState(nextState);
     hud.setCalendar(now);
     hud.setClockHands(now);
 
     requestAnimationFrame(tick);
   }
+
   tick();
 }
 
