@@ -1,8 +1,8 @@
 // src/audio/audioManager.js
-// - Starts silent. Must be unlocked by a user gesture (HUD button tap).
-// - Two channels: SFX + MUSIC
-// - Auto music by time (when no story override)
-// - Story override: state.audio.musicTrack (string) or null to release to auto
+// Stable + iOS-friendly:
+// - SFX uses WebAudio (buffers)  ✅
+// - MUSIC uses HTMLAudio streaming (no heavy decode) ✅
+// - Starts silent; user must tap buttons to enable
 
 function clamp01(x){ return Math.max(0, Math.min(1, x)); }
 
@@ -14,28 +14,35 @@ export class AudioManager {
       musicBase:this.cfg.musicBasePath|| "assets/audio/music/"
     };
 
-    this._unlocked = false;
+    // unlock flags
+    this._unlockedSfx = false;
+    this._unlockedMusic = false;
 
+    // enabled flags
     this._sfxEnabled = false;
     this._musicEnabled = false;
 
-    this._ctx = null;
-    this._sfxGain = null;
-    this._musicGain = null;
-
-    this._buffers = new Map(); // key -> AudioBuffer
-
-    // Music players (crossfade)
-    this._musicA = null;
-    this._musicB = null;
-    this._musicIsA = true;
-    this._musicKey = null;
-
+    // volumes
     this._musicVol = clamp01(this.cfg.defaults?.musicVolume ?? 0.55);
     this._sfxVol   = clamp01(this.cfg.defaults?.sfxVolume ?? 1.0);
 
-    // looping SFX (rain)
-    this._loopNodes = new Map(); // key -> {src, gain}
+    // WebAudio for SFX
+    this._ctx = null;
+    this._sfxGain = null;
+    this._buffers = new Map();
+    this._loopNodes = new Map();
+
+    // HTMLAudio for Music (two players for crossfade)
+    this._musicA = new Audio();
+    this._musicB = new Audio();
+    for (const a of [this._musicA, this._musicB]) {
+      a.loop = true;
+      a.preload = "auto";
+      a.crossOrigin = "anonymous";
+      a.volume = 0;
+    }
+    this._musicIsA = true;
+    this._musicKey = null;
 
     // Auto music table
     this._auto = this.cfg.autoMusic || {
@@ -48,50 +55,40 @@ export class AudioManager {
       ]
     };
 
-    // Story override state
-    // undefined = no instruction, null = release to auto, string = forced track key
+    // Story override: undefined=no instruction, null=release to auto, string=forced
     this._storyMusicOverride = undefined;
 
-    // Current “rain active” flag (from state.cloudProfile overcast)
+    // rain follow cloudProfile
     this._rainActive = false;
+
+    // fade default
+    this._musicFadeSec = Math.max(0.01, Number(this.cfg.defaults?.musicFadeSec ?? 1.2));
   }
 
-  /* ---------------- getters ---------------- */
-
-  isUnlocked(){ return this._unlocked; }
   isSfxEnabled(){ return this._sfxEnabled; }
   isMusicEnabled(){ return this._musicEnabled; }
 
-  /* ---------------- unlock ---------------- */
+  /* ---------------- unlock SFX (WebAudio) ---------------- */
 
-  async unlock(){
-    if(this._unlocked) return true;
+  async _ensureSfxUnlocked(){
+    if(this._unlockedSfx) return true;
 
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if(!AudioCtx) {
-      // Fallback: still allow <audio> approach, but we keep everything silent
-      this._unlocked = true;
+      this._unlockedSfx = true;
       return true;
     }
 
     this._ctx = new AudioCtx();
-
-    // master gains
     this._sfxGain = this._ctx.createGain();
-    this._musicGain = this._ctx.createGain();
-
     this._sfxGain.gain.value = this._sfxEnabled ? this._sfxVol : 0;
-    this._musicGain.gain.value = this._musicEnabled ? this._musicVol : 0;
-
     this._sfxGain.connect(this._ctx.destination);
-    this._musicGain.connect(this._ctx.destination);
 
-    // iOS: resume on gesture
     if(this._ctx.state === "suspended"){
-      try{ await this._ctx.resume(); }catch(_){}
+      try { await this._ctx.resume(); } catch(_) {}
     }
 
-    // tiny silent blip to fully unlock on some iOS versions
+    // tiny silent blip to fully unlock some iOS versions
     try{
       const buf = this._ctx.createBuffer(1, 1, 22050);
       const src = this._ctx.createBufferSource();
@@ -100,52 +97,73 @@ export class AudioManager {
       src.start(0);
     }catch(_){}
 
-    this._unlocked = true;
+    this._unlockedSfx = true;
     return true;
+  }
+
+  /* ---------------- unlock MUSIC (HTMLAudio) ---------------- */
+
+  async _ensureMusicUnlocked(){
+    if(this._unlockedMusic) return true;
+
+    // Need a user gesture. We'll call play() on a silent track attempt.
+    // We'll mark unlocked after a successful play() promise resolves.
+    try{
+      const a = this._musicA;
+      a.volume = 0;
+      // Ensure src is set (even empty may fail)
+      if(!a.src) a.src = "";
+      const p = a.play();
+      if(p && typeof p.then === "function"){
+        await p.then(()=>{}).catch(()=>{ throw new Error("blocked"); });
+      }
+      a.pause();
+      this._unlockedMusic = true;
+    }catch(_){
+      // If blocked, remain locked; will unlock on next user gesture.
+      this._unlockedMusic = false;
+    }
+
+    return this._unlockedMusic;
   }
 
   /* ---------------- toggles ---------------- */
 
   async toggleSfx(){
     this._sfxEnabled = !this._sfxEnabled;
-    if(!this._unlocked && this._sfxEnabled){
-      await this.unlock();
+
+    if(this._sfxEnabled){
+      await this._ensureSfxUnlocked();
     }
-    this._applyGains();
+    if(this._sfxGain){
+      this._sfxGain.gain.value = this._sfxEnabled ? this._sfxVol : 0;
+    }
+
     if(!this._sfxEnabled){
-      // stop any looping sfx immediately (rain)
       this.stopLoop("rain_loop");
-    }else{
-      // if rain already active, resume loop softly
+    } else {
       if(this._rainActive) this.playLoop("rain_loop", { fadeSec: 0.6 });
     }
+
     return this._sfxEnabled;
   }
 
   async toggleMusic(){
     this._musicEnabled = !this._musicEnabled;
-    if(!this._unlocked && this._musicEnabled){
-      await this.unlock();
-    }
-    this._applyGains();
 
-    // If turning on, immediately apply desired track (auto or override)
     if(this._musicEnabled){
-      await this._applyDesiredMusic(new Date());
-    }else{
-      // turning off -> fade out current music quickly
-      await this.stopMusic({ fadeSec: 0.2 });
+      // unlock by gesture
+      await this._ensureMusicUnlocked();
+      // apply desired (auto/override)
+      await this._applyDesiredMusic(new Date(), { forcePlay: true });
+    } else {
+      await this.stopMusic({ fadeSec: 0.25 });
     }
+
     return this._musicEnabled;
   }
 
-  _applyGains(){
-    if(!this._ctx) return;
-    if(this._sfxGain) this._sfxGain.gain.value = this._sfxEnabled ? this._sfxVol : 0;
-    if(this._musicGain) this._musicGain.gain.value = this._musicEnabled ? this._musicVol : 0;
-  }
-
-  /* ---------------- config helpers ---------------- */
+  /* ---------------- url helpers ---------------- */
 
   _sfxUrl(key){
     const file = this.cfg.sfx?.[key];
@@ -182,9 +200,24 @@ export class AudioManager {
 
   /* ---------------- SFX ---------------- */
 
+  async _loadBuffer(cacheKey, url){
+    if(this._buffers.has(cacheKey)) return this._buffers.get(cacheKey);
+
+    try{
+      const res = await fetch(url, { cache: "force-cache" });
+      if(!res.ok) return null;
+      const arr = await res.arrayBuffer();
+      const buf = await this._ctx.decodeAudioData(arr);
+      this._buffers.set(cacheKey, buf);
+      return buf;
+    }catch(_){
+      return null;
+    }
+  }
+
   async playSfx(key, { volume=1.0 } = {}){
     if(!this._sfxEnabled) return;
-    if(!this._unlocked) return; // must be unlocked by user gesture
+    if(!this._unlockedSfx) return;
     if(!this._ctx || !this._sfxGain) return;
 
     const url = this._sfxUrl(key);
@@ -206,9 +239,9 @@ export class AudioManager {
 
   async playLoop(key, { volume=1.0, fadeSec=0.6 } = {}){
     if(!this._sfxEnabled) return;
-    if(!this._unlocked) return;
+    if(!this._unlockedSfx) return;
     if(!this._ctx || !this._sfxGain) return;
-    if(this._loopNodes.has(key)) return; // already playing
+    if(this._loopNodes.has(key)) return;
 
     const url = this._sfxUrl(key);
     if(!url) return;
@@ -225,12 +258,10 @@ export class AudioManager {
 
     src.connect(g);
     g.connect(this._sfxGain);
-
     src.start(0);
 
     this._loopNodes.set(key, { src, gain: g });
 
-    // fade in
     const target = clamp01(volume);
     const now = this._ctx.currentTime;
     g.gain.cancelScheduledValues(now);
@@ -239,7 +270,7 @@ export class AudioManager {
   }
 
   stopLoop(key, { fadeSec=0.4 } = {}){
-    if(!this._ctx) {
+    if(!this._ctx){
       this._loopNodes.delete(key);
       return;
     }
@@ -248,171 +279,148 @@ export class AudioManager {
 
     const now = this._ctx.currentTime;
     const g = node.gain;
+    const dur = Math.max(0.01, fadeSec);
 
     g.gain.cancelScheduledValues(now);
     g.gain.setValueAtTime(g.gain.value, now);
-    g.gain.linearRampToValueAtTime(0, now + Math.max(0.01, fadeSec));
+    g.gain.linearRampToValueAtTime(0, now + dur);
 
     setTimeout(()=>{
       try{ node.src.stop(); }catch(_){}
       try{ node.src.disconnect(); }catch(_){}
       try{ node.gain.disconnect(); }catch(_){}
       this._loopNodes.delete(key);
-    }, (fadeSec*1000)+120);
+    }, (dur*1000)+120);
   }
 
-  /* ---------------- MUSIC ---------------- */
+  /* ---------------- MUSIC (HTMLAudio streaming) ---------------- */
 
-  async playMusic(key, { fadeSec=1.2 } = {}){
+  async playMusic(key, { fadeSec=1.2, forcePlay=false } = {}){
     if(!this._musicEnabled) return;
-    if(!this._unlocked) return;
-    if(!this._ctx || !this._musicGain) return;
+    if(!this._unlockedMusic && !forcePlay) return;
 
     if(this._musicKey === key) return;
 
     const url = this._musicUrl(key);
     if(!url) return;
 
-    const buf = await this._loadBuffer("music:"+key, url);
-    if(!buf) return;
+    const incoming = this._musicIsA ? this._musicB : this._musicA;
+    const outgoing = this._musicIsA ? this._musicA : this._musicB;
 
-    // pick next player
-    const src = this._ctx.createBufferSource();
-    src.buffer = buf;
-    src.loop = true;
+    // setup incoming
+    incoming.src = url;
+    incoming.currentTime = 0;
+    incoming.volume = 0;
 
-    const g = this._ctx.createGain();
-    g.gain.value = 0;
-
-    src.connect(g);
-    g.connect(this._musicGain);
-
-    src.start(0);
-
-    // crossfade A<->B
-    const now = this._ctx.currentTime;
-    const dur = Math.max(0.01, fadeSec);
-
-    const old = this._musicIsA ? this._musicA : this._musicB;
-    const oldKey = this._musicKey;
-
-    // set new
-    if(this._musicIsA){
-      this._musicB = { src, gain: g, key };
-    }else{
-      this._musicA = { src, gain: g, key };
+    // Try play (may still be blocked if not unlocked)
+    try{
+      const p = incoming.play();
+      if(p && typeof p.then === "function"){
+        await p;
+      }
+      this._unlockedMusic = true;
+    }catch(_){
+      // blocked -> leave it silent and return
+      return;
     }
+
+    // crossfade
+    const dur = Math.max(0.01, fadeSec);
+    await this._crossfade(outgoing, incoming, dur);
+
+    // finalize
+    try{ outgoing.pause(); }catch(_){}
+    outgoing.volume = 0;
+
     this._musicIsA = !this._musicIsA;
     this._musicKey = key;
-
-    // fade in new
-    g.gain.cancelScheduledValues(now);
-    g.gain.setValueAtTime(0, now);
-    g.gain.linearRampToValueAtTime(1, now + dur);
-
-    // fade out old then stop
-    if(old?.gain){
-      old.gain.gain.cancelScheduledValues(now);
-      old.gain.gain.setValueAtTime(old.gain.gain.value, now);
-      old.gain.gain.linearRampToValueAtTime(0, now + dur);
-
-      setTimeout(()=>{
-        try{ old.src.stop(); }catch(_){}
-        try{ old.src.disconnect(); }catch(_){}
-        try{ old.gain.disconnect(); }catch(_){}
-      }, (dur*1000)+120);
-    }
   }
 
   async stopMusic({ fadeSec=0.6 } = {}){
-    if(!this._ctx) return;
-    const now = this._ctx.currentTime;
     const dur = Math.max(0.01, fadeSec);
-
     const a = this._musicA;
     const b = this._musicB;
 
-    for(const m of [a,b]){
-      if(!m?.gain) continue;
-      m.gain.gain.cancelScheduledValues(now);
-      m.gain.gain.setValueAtTime(m.gain.gain.value, now);
-      m.gain.gain.linearRampToValueAtTime(0, now + dur);
-      setTimeout(()=>{
-        try{ m.src.stop(); }catch(_){}
-        try{ m.src.disconnect(); }catch(_){}
-        try{ m.gain.disconnect(); }catch(_){}
-      }, (dur*1000)+120);
-    }
+    await this._fadeTo(a, 0, dur);
+    await this._fadeTo(b, 0, dur);
 
-    this._musicA = null;
-    this._musicB = null;
+    try{ a.pause(); }catch(_){}
+    try{ b.pause(); }catch(_){}
+
     this._musicKey = null;
+  }
+
+  _fadeTo(audioEl, target, sec){
+    return new Promise((resolve)=>{
+      const startVol = audioEl.volume;
+      const endVol = clamp01(target);
+      const durMs = sec * 1000;
+      const t0 = performance.now();
+
+      const step = (t)=>{
+        const k = Math.min(1, (t - t0) / durMs);
+        audioEl.volume = startVol + (endVol - startVol) * k;
+        if(k >= 1) return resolve();
+        requestAnimationFrame(step);
+      };
+
+      requestAnimationFrame(step);
+    });
+  }
+
+  async _crossfade(outgoing, incoming, sec){
+    // outgoing may not be playing; fade anyway
+    const toIn = this._musicVol;
+    await Promise.all([
+      this._fadeTo(incoming, toIn, sec),
+      this._fadeTo(outgoing, 0, sec)
+    ]);
   }
 
   /* ---------------- STORY + AUTO ---------------- */
 
-  // called from main each tick with current state
   async applyStoryState(now, state){
-    // 1) Rain audio follows cloudProfile overcast (auto-link)
+    // Rain audio follows cloudProfile overcast
     const profile = state?.cloudProfile || "none";
     const shouldRain = (profile === "overcast");
+
     if(shouldRain !== this._rainActive){
       this._rainActive = shouldRain;
-      if(this._sfxEnabled && this._unlocked){
+      if(this._sfxEnabled && this._unlockedSfx){
         if(shouldRain) this.playLoop("rain_loop", { fadeSec: 1.0 });
         else this.stopLoop("rain_loop", { fadeSec: 1.0 });
       }
     }
 
-    // 2) Music override via state.audio.musicTrack
+    // Music override
     const musicTrack = state?.audio?.musicTrack;
     if(typeof musicTrack !== "undefined"){
-      // string => force, null => release to auto
-      this._storyMusicOverride = musicTrack;
+      this._storyMusicOverride = musicTrack; // string or null
     }
 
-    // 3) Auto/override apply
-    if(this._musicEnabled && this._unlocked){
-      await this._applyDesiredMusic(now);
+    // Apply desired music (only if enabled & unlocked)
+    if(this._musicEnabled && this._unlockedMusic){
+      await this._applyDesiredMusic(now, { forcePlay: false });
     }
   }
 
-  async _applyDesiredMusic(now){
-    // decide desired key
+  async _applyDesiredMusic(now, { forcePlay=false } = {}){
     let desired = null;
 
     if(typeof this._storyMusicOverride === "string"){
       desired = this._storyMusicOverride;
-    }else{
-      // release to auto OR no instruction
+    } else {
       if(this._auto?.enabled === false) desired = null;
       else desired = this._autoKeyForTime(now);
     }
 
     if(!desired){
-      // no music desired
       if(this._musicKey) await this.stopMusic({ fadeSec: 0.8 });
       return;
     }
 
-    // play desired
-    await this.playMusic(desired, { fadeSec: this.cfg.defaults?.musicFadeSec ?? 1.2 });
-  }
-
-  /* ---------------- buffer cache ---------------- */
-
-  async _loadBuffer(cacheKey, url){
-    if(this._buffers.has(cacheKey)) return this._buffers.get(cacheKey);
-
-    try{
-      const res = await fetch(url, { cache: "force-cache" });
-      if(!res.ok) return null;
-      const arr = await res.arrayBuffer();
-      const buf = await this._ctx.decodeAudioData(arr);
-      this._buffers.set(cacheKey, buf);
-      return buf;
-    }catch(_){
-      return null;
+    if(desired !== this._musicKey){
+      await this.playMusic(desired, { fadeSec: this._musicFadeSec, forcePlay });
     }
   }
 }
