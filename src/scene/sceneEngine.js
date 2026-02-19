@@ -1,7 +1,7 @@
 import { SkyManager } from "./skyManager.js";
 import { CloudManager } from "./cloudManager.js";
 
-const CLOUD_PROFILE_FADE_SEC = 3.0; // ✅ ปรับความเนียนตรงนี้ (วินาที)
+const CLOUD_PROFILE_FADE_SEC = 60.0; // ✅ ปรับความเนียนตรงนี้ (วินาที)
 
 export class SceneEngine {
   constructor({ hostEl, sceneLayout }){
