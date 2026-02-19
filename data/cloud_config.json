@@ -10,7 +10,7 @@
         {
           "name": "far",
           "speedPxPerSec": 4,
-          "scale": 0.2,
+          "scale": 0.5,
           "baseAlpha": 0.55,
           "overlapPx": 6,
 
@@ -28,7 +28,7 @@
         {
           "name": "near",
           "speedPxPerSec": 10,
-          "scale": 0.8,
+          "scale": 1,
           "baseAlpha": 0.90,
           "overlapPx": 6,
 
@@ -52,7 +52,7 @@
         {
           "name": "far",
           "speedPxPerSec": 6,
-          "scale": 0.2,
+          "scale": 0.5,
           "baseAlpha": 0.70,
           "overlapPx": 6,
 
@@ -70,7 +70,7 @@
         {
           "name": "near",
           "speedPxPerSec": 14,
-          "scale": 0.8,
+          "scale": 1,
           "baseAlpha": 0.95,
           "overlapPx": 6,
 
