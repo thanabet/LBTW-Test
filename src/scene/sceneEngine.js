@@ -24,13 +24,16 @@ export class SceneEngine {
 
     this._activeCloud = "A"; // "A" or "B"
 
-    // ✅ IMPORTANT: track current vs target to prevent restarting fade every frame
+    // track current vs target
     this._currentCloudProfile = "none"; // currently visible profile
     this._targetCloudProfile = "none";  // target profile during fade
 
     this._xfading = false;
     this._fadeT = 0;
     this._fadeDur = CLOUD_PROFILE_FADE_SEC;
+
+    // ✅ NEW: prevent fade on first load
+    this._hasSetInitialCloud = false;
 
     this.skyContainer = null;
     this.sceneRectPx = null;
@@ -67,13 +70,13 @@ export class SceneEngine {
     this.app.stage.addChild(this.skyContainer);
     this.app.stage.addChild(this.cloudContainer);
 
-    // ✅ 2 alpha layers for clouds
+    // 2 alpha layers for clouds
     this.cloudLayerA = new PIXI.Container();
     this.cloudLayerB = new PIXI.Container();
     this.cloudContainer.addChild(this.cloudLayerA);
     this.cloudContainer.addChild(this.cloudLayerB);
 
-    // initial visibility
+    // initial visibility (A visible)
     this.cloudLayerA.alpha = 1;
     this.cloudLayerB.alpha = 0;
   }
@@ -112,6 +115,9 @@ export class SceneEngine {
     this._fadeT = 0;
     this._fadeDur = CLOUD_PROFILE_FADE_SEC;
 
+    // ✅ NEW
+    this._hasSetInitialCloud = false;
+
     // if already resized, apply rect
     if(this.sceneRectPx){
       this.cloudsA.resizeToRect(this.sceneRectPx);
@@ -129,14 +135,50 @@ export class SceneEngine {
     return t*t*(3 - 2*t);
   }
 
-  // ✅ Start a smooth transition only when target actually changes
+  /**
+   * ✅ NEW: Set initial cloud profile instantly (NO FADE)
+   * Call this once after story is ready, before starting tick loop.
+   */
+  setInitialCloudProfile(profile){
+    if(!this.cloudsA || !this.cloudsB) return;
+
+    const p = this._normalizeProfile(profile);
+
+    // Put initial profile on the visible layer (A), keep B hidden
+    this.cloudsA.setProfile(p);
+    this.cloudsB.setProfile(p);
+
+    if(this.sceneRectPx){
+      this.cloudsA.resizeToRect(this.sceneRectPx);
+      this.cloudsB.resizeToRect(this.sceneRectPx);
+    }
+
+    this.cloudLayerA.alpha = 1;
+    this.cloudLayerB.alpha = 0;
+
+    this._activeCloud = "A";
+    this._currentCloudProfile = p;
+    this._targetCloudProfile = p;
+
+    this._xfading = false;
+    this._fadeT = 0;
+
+    this._hasSetInitialCloud = true;
+  }
+
+  // Start a smooth transition only when target actually changes
   _transitionCloudProfile(nextProfile){
     if(!this.cloudsA || !this.cloudsB) return;
 
     const next = this._normalizeProfile(nextProfile);
 
+    // ✅ if initial not set yet, DO NOT FADE — just snap
+    if(!this._hasSetInitialCloud){
+      this.setInitialCloudProfile(next);
+      return;
+    }
+
     // If we're already aiming for this target, do nothing.
-    // (This is the key fix that makes 60 sec fade actually work.)
     if(next === this._targetCloudProfile) return;
 
     this._targetCloudProfile = next;
