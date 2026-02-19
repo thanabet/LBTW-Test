@@ -4,7 +4,7 @@
 
   "defaults": {
     "sfxVolume": 1.0,
-    "musicVolume": 0.55,
+    "musicVolume": 0.4,
     "musicFadeSec": 1.2
   },
 
@@ -30,3 +30,4 @@
     "lofi_night": "lofi_night.mp3"
   }
 }
+
