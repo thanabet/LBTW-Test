@@ -1,3 +1,4 @@
+// src/scene/rainManager.js
 export class RainManager {
   constructor(container){
     this.container = container;
@@ -192,6 +193,11 @@ export class RainManager {
   }
 
   _startLightningFlash(){
+    // 🔔 NEW: emit global event so audio can sync thunder
+    try{
+      window.dispatchEvent(new CustomEvent("lbtw:lightning"));
+    }catch(_){}
+
     // 2–3 quick flashes
     const patterns = [
       // 2 flashes

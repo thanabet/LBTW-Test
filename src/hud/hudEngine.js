@@ -1,3 +1,4 @@
+// src/hud/hudEngine.js
 import { calcHandAngles } from "./clockHands.js";
 
 function el(tag){
@@ -71,6 +72,41 @@ export class HudEngine {
     this.logoHotspotEl.style.pointerEvents = "auto";
     this.logoHotspotEl.style.display = "none";
 
+    /* ---------- NEW: audio buttons hotspots + slash overlays ---------- */
+    this.audio = null; // AudioManager instance (optional)
+    this._sfxEnabledUI = false;
+    this._musicEnabledUI = false;
+
+    this.sfxBtnEl = el("div");
+    this.musicBtnEl = el("div");
+    for(const b of [this.sfxBtnEl, this.musicBtnEl]){
+      b.style.position = "absolute";
+      b.style.background = "transparent";
+      b.style.cursor = "pointer";
+      b.style.pointerEvents = "auto";
+      b.style.display = "none";
+    }
+
+    // draw slash overlay as a div line (no extra PNG needed)
+    this.sfxSlashEl = el("div");
+    this.musicSlashEl = el("div");
+    for(const sl of [this.sfxSlashEl, this.musicSlashEl]){
+      Object.assign(sl.style, {
+        position: "absolute",
+        left: "12%",
+        top: "50%",
+        width: "76%",
+        height: "10%",
+        background: "rgba(40,40,40,0.92)",
+        transform: "translateY(-50%) rotate(-35deg)",
+        borderRadius: "999px",
+        pointerEvents: "none",
+        display: "block"
+      });
+    }
+    this.sfxBtnEl.appendChild(this.sfxSlashEl);
+    this.musicBtnEl.appendChild(this.musicSlashEl);
+
     this.root.append(
       this.monthEl, this.dayEl,
       this.statusEl, this.moodEl,
@@ -79,7 +115,9 @@ export class HudEngine {
       this.hourHand, this.minHand,
       this.portraitEl,
       this.statusIconEl,
-      this.logoHotspotEl
+      this.logoHotspotEl,
+      this.sfxBtnEl,
+      this.musicBtnEl
     );
 
     for(const e of [this.monthEl,this.dayEl,this.statusEl,this.moodEl,this.dialogueEl]){
@@ -137,7 +175,37 @@ export class HudEngine {
       }
     });
 
+    // NEW: audio button taps
+    onTap(this.sfxBtnEl, async () => {
+      if(!this.audio) return;
+      const on = await this.audio.toggleSfx();
+      this._sfxEnabledUI = !!on;
+      this._applyAudioUI();
+    });
+
+    onTap(this.musicBtnEl, async () => {
+      if(!this.audio) return;
+      const on = await this.audio.toggleMusic();
+      this._musicEnabledUI = !!on;
+      this._applyAudioUI();
+    });
+
     this.setPortrait("normal");
+    this._applyAudioUI();
+  }
+
+  // NEW: called by main after creating AudioManager
+  setAudioManager(audioManager){
+    this.audio = audioManager;
+    this._sfxEnabledUI = !!audioManager?.isSfxEnabled?.();
+    this._musicEnabledUI = !!audioManager?.isMusicEnabled?.();
+    this._applyAudioUI();
+  }
+
+  _applyAudioUI(){
+    // slash visible when OFF
+    this.sfxSlashEl.style.display = this._sfxEnabledUI ? "none" : "block";
+    this.musicSlashEl.style.display = this._musicEnabledUI ? "none" : "block";
   }
 
   /* ---------- MODAL (Smooth + Premium) ---------- */
@@ -175,7 +243,6 @@ export class HudEngine {
     transition: none !important;
   }
 }
-
       `;
       document.head.appendChild(style);
     }
@@ -312,6 +379,20 @@ export class HudEngine {
     if(L.logoHotspot){
       this.logoHotspotEl.style.display="block";
       this._applyRectPx(this.logoHotspotEl,L.logoHotspot);
+    }
+
+    // NEW: audio buttons layout
+    if(L.audioButtons?.sfx){
+      this.sfxBtnEl.style.display = "block";
+      this._applyRectPx(this.sfxBtnEl, L.audioButtons.sfx);
+    }else{
+      this.sfxBtnEl.style.display = "none";
+    }
+    if(L.audioButtons?.music){
+      this.musicBtnEl.style.display = "block";
+      this._applyRectPx(this.musicBtnEl, L.audioButtons.music);
+    }else{
+      this.musicBtnEl.style.display = "none";
     }
 
     const slots=L.inRoom.slots;
@@ -505,5 +586,3 @@ export class HudEngine {
     });
   }
 }
-
-

@@ -33,12 +33,10 @@
   },
 
   "logoHotspot": { "x": 77, "y": 81, "w": 15, "h": 6 },
-  "intromieUrl": "https://www.instagram.com/intromie.studio?igsh=cXU2dmo3aTBxZW5z&utm_source=qr"
+  "intromieUrl": "https://www.instagram.com/intromie.studio?igsh=cXU2dmo3aTBxZW5z&utm_source=qr",
+
+  "audioButtons": {
+    "sfx":   { "x": 88.5, "y": 72.0, "w": 8.5, "h": 5.0 },
+    "music": { "x": 88.5, "y": 77.8, "w": 8.5, "h": 5.0 }
+  }
 }
-
-
-
-
-
-
-

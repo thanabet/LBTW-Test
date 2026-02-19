@@ -1,6 +1,8 @@
+// src/main.js
 import { SceneEngine } from "./scene/sceneEngine.js";
 import { HudEngine } from "./hud/hudEngine.js";
 import { StoryEngine } from "./story/storyEngine.js";
+import { AudioManager } from "./audio/audioManager.js";
 
 const TEMPLATE_W = 1595;
 const TEMPLATE_H = 3457;
@@ -93,6 +95,16 @@ async function boot(){
   const rainCfg = await loadJSON("./data/rain_config.json");
   await scene.initRain(rainCfg);
 
+  // --- AUDIO (NEW) ---
+  const audioCfg = await loadJSON("./data/audio_config.json");
+  const audio = new AudioManager(audioCfg);
+  hud.setAudioManager(audio);
+
+  // thunder sync with lightning flashes (from RainManager)
+  window.addEventListener("lbtw:lightning", () => {
+    audio.playSfx("thunder", { volume: 1.0 });
+  });
+
   // first layout
   scene.resize();
   hud.resize();
@@ -121,6 +133,9 @@ async function boot(){
     hud.setState(nextState);
     hud.setCalendar(now);
     hud.setClockHands(now);
+
+    // ✅ NEW: Audio follows state (starts silent; user must tap buttons)
+    audio.applyStoryState(now, nextState);
 
     requestAnimationFrame(tick);
   }
