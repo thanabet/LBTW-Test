@@ -20,7 +20,7 @@
   "moodText":   { "x": 49, "y": 64.8, "w": 40, "h": 3.5, "align": "center" },
 
   "dialogue": {
-    "x": 12, "y": 67, "w": 76, "h": 12,
+    "x": 10, "y": 67, "w": 76, "h": 12,
     "tapToToggleLang": true
   },
 
@@ -36,7 +36,8 @@
   "intromieUrl": "https://www.instagram.com/intromie.studio?igsh=cXU2dmo3aTBxZW5z&utm_source=qr",
 
   "audioButtons": {
-    "sfx":   { "x": 88.5, "y": 72.0, "w": 8.5, "h": 5.0 },
-    "music": { "x": 88.5, "y": 77.8, "w": 8.5, "h": 5.0 }
+    "sfx":   { "x": 88, "y": 70.0, "w": 8.5, "h": 5.0 },
+    "music": { "x": 88, "y": 75.8, "w": 8.5, "h": 5.0 }
   }
 }
+
