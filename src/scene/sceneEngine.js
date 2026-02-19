@@ -8,20 +8,16 @@ export class SceneEngine {
 
     this.app = null;
 
-    // layers
     this.sky = null;
     this.clouds = null;
 
-    // containers
     this.skyContainer = null;
     this.cloudContainer = null;
 
     this.sceneRectPx = null;
 
-    // reuse mask graphic (กันสะสม)
     this._maskG = null;
 
-    // avoid redundant profile set
     this._lastCloudProfile = null;
   }
 
@@ -46,7 +42,6 @@ export class SceneEngine {
     });
     this.hostEl.appendChild(this.app.canvas);
 
-    // create containers (order matters)
     this.skyContainer = new PIXI.Container();
     this.cloudContainer = new PIXI.Container();
 
@@ -54,9 +49,6 @@ export class SceneEngine {
     this.app.stage.addChild(this.cloudContainer);
   }
 
-  // ✅ รองรับ 2 แบบ:
-  // 1) initSky([urls]) แบบเดิม
-  // 2) initSky({ urls, keyframes, mode }) แบบใหม่
   async initSky(arg){
     await this._ensurePixi();
 
@@ -77,9 +69,14 @@ export class SceneEngine {
 
   setCloudProfile(profileName){
     if(!this.clouds) return;
-    if(profileName === this._lastCloudProfile) return;
-    this._lastCloudProfile = profileName;
-    this.clouds.setProfile(profileName);
+
+    // ✅ normalize
+    const next = (profileName && String(profileName).trim()) ? String(profileName).trim() : "none";
+
+    if(next === this._lastCloudProfile) return;
+    this._lastCloudProfile = next;
+
+    this.clouds.setProfile(next);
   }
 
   resize(){
@@ -93,7 +90,6 @@ export class SceneEngine {
 
     this.sceneRectPx = this._percentRectToPx(this.layout.sceneRect, w, h);
 
-    // mask เฉพาะพื้นที่ scene (reuse)
     if(!this._maskG){
       this._maskG = new PIXI.Graphics();
       this.app.stage.addChild(this._maskG);
@@ -108,17 +104,19 @@ export class SceneEngine {
     if(this.clouds) this.clouds.resizeToRect(this.sceneRectPx);
   }
 
-  updateSkyByTime(now){
-    // backward compatible
-    if(!this.sky) return;
-    this.sky.updateByTime(now);
-  }
-
   update(now, dtSec, storyState){
+    // sky always by time
     if(this.sky) this.sky.updateByTime(now);
 
-    const profile = storyState?.cloudProfile;
-    if(profile) this.setCloudProfile(profile);
+    // ✅ IMPORTANT: support both shapes:
+    // - storyState.cloudProfile
+    // - storyState.state.cloudProfile  (nested)
+    const profile =
+      storyState?.cloudProfile ??
+      storyState?.state?.cloudProfile ??
+      "none";
+
+    this.setCloudProfile(profile);
 
     if(this.clouds) this.clouds.update(now, dtSec);
   }
