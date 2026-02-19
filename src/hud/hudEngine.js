@@ -1,22 +1,20 @@
-// src/hud/hudEngine.js
 import { calcHandAngles } from "./clockHands.js";
 
 function el(tag){
   return document.createElement(tag);
 }
 
-// iOS-friendly tap handler (keeps existing behavior stable)
+// iOS-safe tap handler: use POINTER ONLY to avoid double-fire (touchend/click duplication)
 function onTap(target, fn){
   let last = 0;
-  const run = (e) => {
+  target.style.touchAction = "manipulation";
+
+  target.addEventListener("pointerup", (e) => {
     const now = Date.now();
-    if (now - last < 350) return; // prevent double-fire
+    if (now - last < 350) return;
     last = now;
     try { fn(e); } catch(_) {}
-  };
-  target.addEventListener("pointerup", run, { passive: true });
-  target.addEventListener("touchend", run, { passive: true });
-  target.addEventListener("click", run);
+  }, { passive: true });
 }
 
 export class HudEngine {
@@ -72,7 +70,7 @@ export class HudEngine {
     this.logoHotspotEl.style.pointerEvents = "auto";
     this.logoHotspotEl.style.display = "none";
 
-    /* ---------- NEW: audio buttons hotspots + slash overlays ---------- */
+    /* ---------- audio buttons hotspots + slash overlays ---------- */
     this.audio = null; // AudioManager instance (optional)
     this._sfxEnabledUI = false;
     this._musicEnabledUI = false;
@@ -175,7 +173,7 @@ export class HudEngine {
       }
     });
 
-    // NEW: audio button taps
+    // audio button taps
     onTap(this.sfxBtnEl, async () => {
       if(!this.audio) return;
       const on = await this.audio.toggleSfx();
@@ -194,7 +192,7 @@ export class HudEngine {
     this._applyAudioUI();
   }
 
-  // NEW: called by main after creating AudioManager
+  // called by main after creating AudioManager
   setAudioManager(audioManager){
     this.audio = audioManager;
     this._sfxEnabledUI = !!audioManager?.isSfxEnabled?.();
@@ -381,7 +379,7 @@ export class HudEngine {
       this._applyRectPx(this.logoHotspotEl,L.logoHotspot);
     }
 
-    // NEW: audio buttons layout
+    // audio buttons layout
     if(L.audioButtons?.sfx){
       this.sfxBtnEl.style.display = "block";
       this._applyRectPx(this.sfxBtnEl, L.audioButtons.sfx);
