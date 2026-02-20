@@ -24,10 +24,11 @@
   },
 
   "music": {
-    "lofi_morning": "lofi_morning.mp3",
-    "lofi_day": "lofi_day.mp3",
-    "lofi_evening": "lofi_evening.mp3",
-    "lofi_night": "lofi_night.mp3"
+    "lofi_morning": "lofi_morning.m4a",
+    "lofi_day": "lofi_day.m4a",
+    "lofi_evening": "lofi_evening.m4a",
+    "lofi_night": "lofi_night.m4a"
   }
 }
+
 
