@@ -1,15 +1,11 @@
 // src/audio/audioManager.js
-// SFX: WebAudio ✅
-// MUSIC: HTMLAudio ✅
-// Features:
-// - Music toggle ON returns immediately for instant HUD slash update
-// - OFF fades down + pauses (true off)
-// - Cancelable fades (no fade collisions)
-// - NEW: autoMusic slots support multiple tracks per time slot
-//   - slot can be { start:"06:00", key:"lofi_morning" } (old)
-//   - or       { start:"06:00", keys:["m1","m2","m3"] } (new)
-// - When turning music ON: pick random track immediately (async start), NOT repeating last track in that slot
-// - When a track ends: auto-pick next random track in same slot (no immediate repeats)
+// SFX: WebAudio ✅ (with iOS background/foreground recovery)
+// MUSIC: HTMLAudio ✅ (random no-repeat per time slot, ended->next)
+// Fix added:
+// - After leaving Safari, WebAudio AudioContext is often suspended/closed.
+// - Ensure we RESUME context whenever SFX is enabled (not only first unlock).
+// - Recreate AudioContext if it became "closed".
+// - Track "needsResume" flag on pageshow/visibilitychange; resume on next user toggle.
 
 function clamp01(x){ return Math.max(0, Math.min(1, x)); }
 
@@ -63,12 +59,15 @@ export class AudioManager {
     this._buffers = new Map();
     this._loopNodes = new Map();
 
+    // NEW: iOS background recovery
+    this._sfxNeedsResume = false;
+
     // HTMLAudio for Music
     this._musicEl = new Audio();
-    this._musicEl.loop = false;       // we'll manage looping ourselves (needed for playlists)
+    this._musicEl.loop = false;       // manage loop/end ourselves
     this._musicEl.preload = "auto";
     this._musicEl.crossOrigin = "anonymous";
-    this._musicEl.volume = 0;         // start silent
+    this._musicEl.volume = 0;
     this._musicEl.muted = false;
     this._musicEl.playsInline = true;
 
@@ -106,42 +105,96 @@ export class AudioManager {
     // rain follow cloudProfile overcast
     this._rainActive = false;
 
-    // bind ended handler (kept stable)
+    // bind ended handler
     this._onMusicEnded = this._onMusicEnded.bind(this);
     this._musicEl.addEventListener("ended", this._onMusicEnded);
+
+    // NEW: Listen for background/foreground changes (iOS suspends WebAudio)
+    this._bindLifecycleHandlers();
   }
 
   isSfxEnabled(){ return this._sfxEnabled; }
   isMusicEnabled(){ return this._musicEnabled; }
 
+  /* ---------------- lifecycle (NEW) ---------------- */
+
+  _bindLifecycleHandlers(){
+    // When returning to Safari, WebAudio often becomes suspended/needs user gesture to resume
+    const markNeedsResume = () => {
+      this._sfxNeedsResume = true;
+    };
+
+    document.addEventListener("visibilitychange", () => {
+      if(document.visibilityState === "hidden") {
+        // mark + optionally suspend (not required)
+        this._sfxNeedsResume = true;
+      } else {
+        // visible again
+        this._sfxNeedsResume = true;
+      }
+    });
+
+    // iOS fires pageshow when coming back from app switch / bfcache
+    window.addEventListener("pageshow", markNeedsResume);
+    window.addEventListener("pagehide", markNeedsResume);
+    window.addEventListener("focus", markNeedsResume);
+  }
+
   /* ---------------- unlock SFX (WebAudio) ---------------- */
 
-  async _ensureSfxUnlocked(){
-    if(this._unlockedSfx) return true;
-
+  async _createSfxContext(){
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if(!AudioCtx) {
-      this._unlockedSfx = true;
-      return true;
-    }
+    if(!AudioCtx) return false;
 
     this._ctx = new AudioCtx();
     this._sfxGain = this._ctx.createGain();
     this._sfxGain.gain.value = this._sfxEnabled ? this._sfxVol : 0;
     this._sfxGain.connect(this._ctx.destination);
 
-    if(this._ctx.state === "suspended"){
-      try { await this._ctx.resume(); } catch(_) {}
+    // reset caches tied to old context
+    this._buffers = new Map();
+
+    // stop any old loops map (safety)
+    this._loopNodes = new Map();
+
+    return true;
+  }
+
+  async _resumeSfxContextIfNeeded(){
+    if(!this._ctx) return;
+
+    // If iOS closed it, recreate
+    if(this._ctx.state === "closed"){
+      await this._createSfxContext();
     }
 
-    // tiny silent blip
-    try{
-      const buf = this._ctx.createBuffer(1, 1, 22050);
-      const src = this._ctx.createBufferSource();
-      src.buffer = buf;
-      src.connect(this._ctx.destination);
-      src.start(0);
-    }catch(_){}
+    // Resume if suspended or flagged by lifecycle
+    if(this._ctx && (this._ctx.state === "suspended" || this._sfxNeedsResume)){
+      try { await this._ctx.resume(); } catch(_){}
+      this._sfxNeedsResume = false;
+
+      // tiny blip (helps on some iOS)
+      try{
+        const buf = this._ctx.createBuffer(1, 1, 22050);
+        const src = this._ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(this._ctx.destination);
+        src.start(0);
+      }catch(_){}
+    }
+  }
+
+  async _ensureSfxUnlocked(){
+    // IMPORTANT: do NOT early-return when unlocked, because iOS can suspend later.
+    if(!this._ctx || !this._sfxGain){
+      const ok = await this._createSfxContext();
+      if(!ok) {
+        this._unlockedSfx = true;
+        return true;
+      }
+    }
+
+    await this._resumeSfxContextIfNeeded();
 
     this._unlockedSfx = true;
     return true;
@@ -151,7 +204,6 @@ export class AudioManager {
 
   async _ensureMusicUnlocked(){
     if(this._unlockedMusic) return true;
-    // mark unlocked after first successful play; here we just allow attempts
     this._unlockedMusic = true;
     return true;
   }
@@ -162,8 +214,10 @@ export class AudioManager {
     this._sfxEnabled = !this._sfxEnabled;
 
     if(this._sfxEnabled){
+      // NEW: always ensure + resume when enabling
       await this._ensureSfxUnlocked();
     }
+
     if(this._sfxGain){
       this._sfxGain.gain.value = this._sfxEnabled ? this._sfxVol : 0;
     }
@@ -171,14 +225,16 @@ export class AudioManager {
     if(!this._sfxEnabled){
       this.stopLoop("rain_loop");
     } else {
-      if(this._rainActive) this.playLoop("rain_loop", { fadeSec: 0.6 });
+      // if rain is active, restart after resume
+      if(this._rainActive) {
+        await this.playLoop("rain_loop", { fadeSec: 0.6 });
+      }
     }
 
     return this._sfxEnabled;
   }
 
   async toggleMusic(){
-    // Prevent re-entry / double tap race
     if(this._musicToggleLock) return this._musicEnabled;
     this._musicToggleLock = true;
 
@@ -186,23 +242,18 @@ export class AudioManager {
       const wantOn = !this._musicEnabled;
 
       if(wantOn){
-        // ✅ UI instant
         await this._ensureMusicUnlocked();
         this._musicEnabled = true;
 
-        // Kick async start (random now, no repeat)
         this._kickMusicStartWorker({ forcePlay: true });
         return true;
       }
 
-      // want OFF: commit state first so story engine won't turn it back on
       this._musicEnabled = false;
 
-      // cancel any pending start worker and fades
       this._musicStartWorkerId++;
       this._cancelFade();
 
-      // Fade down + PAUSE (real off)
       await this._fadeMusicTo(0, 0.20);
       try{ this._musicEl.pause(); }catch(_){}
       return false;
@@ -280,12 +331,10 @@ export class AudioManager {
     if(!Array.isArray(list) || list.length === 0) return null;
     if(list.length === 1) return list[0];
 
-    // try a few times to avoid repeat
     for(let i=0;i<6;i++){
       const k = list[Math.floor(Math.random()*list.length)];
       if(k !== last) return k;
     }
-    // fallback
     let idx = list.indexOf(last);
     if(idx < 0) idx = 0;
     return list[(idx + 1) % list.length];
@@ -310,7 +359,7 @@ export class AudioManager {
 
   async playSfx(key, { volume=1.0 } = {}){
     if(!this._sfxEnabled) return;
-    if(!this._unlockedSfx) return;
+    await this._ensureSfxUnlocked();
     if(!this._ctx || !this._sfxGain) return;
 
     const url = this._sfxUrl(key);
@@ -327,12 +376,12 @@ export class AudioManager {
 
     src.connect(g);
     g.connect(this._sfxGain);
-    src.start(0);
+    try { src.start(0); } catch(_){}
   }
 
   async playLoop(key, { volume=1.0, fadeSec=0.6 } = {}){
     if(!this._sfxEnabled) return;
-    if(!this._unlockedSfx) return;
+    await this._ensureSfxUnlocked();
     if(!this._ctx || !this._sfxGain) return;
     if(this._loopNodes.has(key)) return;
 
@@ -351,7 +400,8 @@ export class AudioManager {
 
     src.connect(g);
     g.connect(this._sfxGain);
-    src.start(0);
+
+    try { src.start(0); } catch(_){}
 
     this._loopNodes.set(key, { src, gain: g });
 
@@ -410,7 +460,7 @@ export class AudioManager {
 
     return new Promise((resolve)=>{
       const step = (t)=>{
-        if(myToken !== this._fadeToken) return resolve(); // cancelled
+        if(myToken !== this._fadeToken) return resolve();
         const k = Math.min(1, (t - t0) / durMs);
         this._musicEl.volume = startVol + (endVol - startVol) * k;
         if(k >= 1){
@@ -430,14 +480,13 @@ export class AudioManager {
     this._musicSwapLock = true;
 
     try{
-      // During swap: cancel fades, set volume 0, pause briefly
       this._cancelFade();
       this._musicEl.volume = 0;
       try{ this._musicEl.pause(); }catch(_){}
 
       if(!same){
         this._musicEl.src = url;
-        this._musicEl.loop = false; // IMPORTANT for playlists & ended event
+        this._musicEl.loop = false;
         this._musicEl.preload = "auto";
         try{ this._musicEl.load(); }catch(_){}
         await once(this._musicEl, "canplay", 2200);
@@ -469,12 +518,9 @@ export class AudioManager {
   }
 
   async _onMusicEnded(){
-    // Only auto-advance if music is enabled and we're in auto slot playlist mode
     if(!this._musicEnabled) return;
 
-    // If story override is forcing a single track, we just restart it
     if(typeof this._storyMusicOverride === "string"){
-      // restart same forced track
       if(this._musicKey){
         try{
           this._musicEl.currentTime = 0;
@@ -485,20 +531,17 @@ export class AudioManager {
       return;
     }
 
-    // If auto disabled, do nothing
     if(this._auto?.enabled === false) return;
 
     const now = new Date();
     const slot = this._getActiveSlot(now);
     if(!slot) return;
 
-    // If slot changed while track was playing, just apply desired
     if(slot.start !== this._activeSlotId){
       this._kickMusicStartWorker({ forcePlay: true });
       return;
     }
 
-    // pick next in same slot (no repeat)
     const list = Array.isArray(slot.keys) ? slot.keys : (slot.key ? [slot.key] : []);
     if(!list.length) return;
 
@@ -508,32 +551,28 @@ export class AudioManager {
     this._lastTrackBySlot.set(slot.start, nextKey);
     this._musicKey = nextKey;
 
-    // soft swap without killing UI
     this._kickMusicStartWorker({ forcePlay: true });
   }
 
   /* ---------------- STORY + AUTO ---------------- */
 
   async applyStoryState(now, state){
-    // Rain audio follows cloudProfile overcast
     const profile = state?.cloudProfile || "none";
     const shouldRain = (profile === "overcast");
 
     if(shouldRain !== this._rainActive){
       this._rainActive = shouldRain;
-      if(this._sfxEnabled && this._unlockedSfx){
-        if(shouldRain) this.playLoop("rain_loop", { fadeSec: 1.0 });
+      if(this._sfxEnabled){
+        if(shouldRain) await this.playLoop("rain_loop", { fadeSec: 1.0 });
         else this.stopLoop("rain_loop", { fadeSec: 1.0 });
       }
     }
 
-    // Music override
     const musicTrack = state?.audio?.musicTrack;
     if(typeof musicTrack !== "undefined"){
-      this._storyMusicOverride = musicTrack; // string or null
+      this._storyMusicOverride = musicTrack;
     }
 
-    // Only act if user enabled music
     if(this._musicEnabled){
       this._kickMusicStartWorker({ forcePlay: false });
     }
@@ -542,12 +581,10 @@ export class AudioManager {
   async _applyDesiredMusic(now, { forcePlay=false } = {}){
     let desiredKey = null;
 
-    // Story override: forced single track
     if(typeof this._storyMusicOverride === "string"){
       desiredKey = this._storyMusicOverride;
       this._activeSlotId = null;
     } else {
-      // auto
       if(this._auto?.enabled === false){
         desiredKey = null;
         this._activeSlotId = null;
@@ -564,7 +601,6 @@ export class AudioManager {
           if(!list.length){
             desiredKey = null;
           } else {
-            // IMPORTANT: random on enable / when slot changes / when forced
             const last = this._lastTrackBySlot.get(slotId) || null;
             desiredKey = this._pickRandomNoRepeat(list, last) || list[0];
             this._lastTrackBySlot.set(slotId, desiredKey);
@@ -574,7 +610,6 @@ export class AudioManager {
     }
 
     if(!desiredKey){
-      // no desired: fade out + pause
       this._cancelFade();
       await this._fadeMusicTo(0, 0.20);
       try{ this._musicEl.pause(); }catch(_){}
@@ -582,14 +617,12 @@ export class AudioManager {
       return true;
     }
 
-    // Change track if needed (or if forcing play)
     if(forcePlay || desiredKey !== this._musicKey){
       const ok = await this.playMusic(desiredKey);
       if(!ok) return false;
       return true;
     }
 
-    // Same track continues
     return true;
   }
 }
