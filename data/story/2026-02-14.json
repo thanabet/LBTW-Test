@@ -3,44 +3,12 @@
   "date": "2026-02-14",
   "events": [
     {
-      "time": "05:30",
-      "state": {
-        "profileCardSrc": "assets/cards/profile_card.png",
-        "scheduleCardSrc": "assets/cards/schedule_card.png",
-
-        "cloudProfile": "few",
-        "roomLight": "off",
-
-        "emotion": "normal",
-        "portraitAnim": {
-          "frames": ["normal_1", "normal_2"],
-          "durationsMs": [6000, 90],
-          "loop": true
-        },
-        "statusIconAnim": {
-          "frames": ["book_1", "book_2", "book_3"],
-          "durationsMs": [8000, 200, 200],
-          "loop": true
-        },
-        "statusIcon": "book",
-        "status": "STATUS : SLEEP",
-        "mood": "MOOD : QUIET",
-        "dialogue": {
-          "th": "…",
-          "en": "..."
-        },
-        "inRoom": ["army"]
-      }
-    },
-
-    {
       "time": "06:30",
       "state": {
         "profileCardSrc": "assets/cards/profile_card.png",
         "scheduleCardSrc": "assets/cards/schedule_card.png",
 
         "cloudProfile": "overcast",
-        "roomLight": "off",
 
         "emotion": "normal",
         "portraitAnim": {
@@ -63,38 +31,6 @@
         "inRoom": ["army", "fai"]
       }
     },
-
-    {
-      "time": "08:00",
-      "state": {
-        "profileCardSrc": "assets/cards/profile_card.png",
-        "scheduleCardSrc": "assets/cards/schedule_card.png",
-
-        "cloudProfile": "few",
-        "roomLight": "off",
-
-        "emotion": "normal",
-        "portraitAnim": {
-          "frames": ["normal_1", "normal_2"],
-          "durationsMs": [6000, 90],
-          "loop": true
-        },
-        "statusIconAnim": {
-          "frames": ["book_1", "book_2", "book_3"],
-          "durationsMs": [8000, 200, 200],
-          "loop": true
-        },
-        "statusIcon": "book",
-        "status": "STATUS : MORNING",
-        "mood": "MOOD : OK",
-        "dialogue": {
-          "th": "เริ่มวันใหม่แล้ว…",
-          "en": "New day..."
-        },
-        "inRoom": ["army", "fai"]
-      }
-    },
-
     {
       "time": "15:34",
       "state": {
@@ -102,7 +38,6 @@
         "scheduleCardSrc": "assets/cards/schedule_card.png",
 
         "cloudProfile": "overcast",
-        "roomLight": "off",
 
         "emotion": "normal",
         "portraitAnim": {
@@ -124,100 +59,8 @@
         },
         "inRoom": ["army", "fai", "poon"]
       }
-    },
-
-    {
-      "time": "17:30",
-      "state": {
-        "profileCardSrc": "assets/cards/profile_card.png",
-        "scheduleCardSrc": "assets/cards/schedule_card.png",
-
-        "cloudProfile": "few",
-        "roomLight": "off",
-
-        "emotion": "normal",
-        "portraitAnim": {
-          "frames": ["normal_1", "normal_2"],
-          "durationsMs": [6000, 90],
-          "loop": true
-        },
-        "statusIconAnim": {
-          "frames": ["book_1", "book_2", "book_3"],
-          "durationsMs": [8000, 200, 200],
-          "loop": true
-        },
-        "statusIcon": "book",
-        "status": "STATUS : SUNSET",
-        "mood": "MOOD : CALM",
-        "dialogue": {
-          "th": "แดดเริ่มอ่อนแล้ว…",
-          "en": "Sunset..."
-        },
-        "inRoom": ["army", "fai", "poon"]
-      }
-    },
-
-    {
-      "time": "19:00",
-      "state": {
-        "profileCardSrc": "assets/cards/profile_card.png",
-        "scheduleCardSrc": "assets/cards/schedule_card.png",
-
-        "cloudProfile": "overcast",
-        "roomLight": "on",
-
-        "emotion": "normal",
-        "portraitAnim": {
-          "frames": ["normal_1", "normal_2"],
-          "durationsMs": [6000, 90],
-          "loop": true
-        },
-        "statusIconAnim": {
-          "frames": ["book_1", "book_2", "book_3"],
-          "durationsMs": [8000, 200, 200],
-          "loop": true
-        },
-        "statusIcon": "book",
-        "status": "STATUS : EVENING",
-        "mood": "MOOD : COZY",
-        "dialogue": {
-          "th": "เปิดไฟแล้ว…",
-          "en": "Lights on..."
-        },
-        "inRoom": ["army", "fai"]
-      }
-    },
-
-    {
-      "time": "22:00",
-      "state": {
-        "profileCardSrc": "assets/cards/profile_card.png",
-        "scheduleCardSrc": "assets/cards/schedule_card.png",
-
-        "cloudProfile": "none",
-        "roomLight": "off",
-
-        "emotion": "normal",
-        "portraitAnim": {
-          "frames": ["normal_1", "normal_2"],
-          "durationsMs": [6000, 90],
-          "loop": true
-        },
-        "statusIconAnim": {
-          "frames": ["book_1", "book_2", "book_3"],
-          "durationsMs": [8000, 200, 200],
-          "loop": true
-        },
-        "statusIcon": "book",
-        "status": "STATUS : NIGHT",
-        "mood": "MOOD : TIRED",
-        "dialogue": {
-          "th": "ได้เวลาพักแล้ว…",
-          "en": "Time to rest..."
-        },
-        "inRoom": ["army"]
-      }
     }
   ]
 }
+
 
