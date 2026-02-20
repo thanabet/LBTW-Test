@@ -1,7 +1,11 @@
 // src/audio/audioManager.js
-// SFX: WebAudio
-// MUSIC: HTMLAudio
-// FIX: UI slash updates instantly (no wait for async start)
+// SFX: WebAudio ✅
+// MUSIC: HTMLAudio ✅
+// Fixes:
+// - When turning ON music: return TRUE immediately so HUD slash updates instantly
+// - Actual playback starts async (still within same user gesture tick)
+// - OFF still fades to 0 and pauses (true off)
+// - Cancelable fade to prevent collisions
 
 function clamp01(x){ return Math.max(0, Math.min(1, x)); }
 
@@ -36,105 +40,339 @@ export class AudioManager {
       musicBase:this.cfg.musicBasePath|| "assets/audio/music/"
     };
 
+    // enabled flags (truth for UI)
     this._sfxEnabled = false;
     this._musicEnabled = false;
 
+    // unlock flags
     this._unlockedSfx = false;
     this._unlockedMusic = false;
 
+    // volumes
     this._musicVol = clamp01(this.cfg.defaults?.musicVolume ?? 0.55);
     this._sfxVol   = clamp01(this.cfg.defaults?.sfxVolume ?? 1.0);
     this._musicFadeSec = Math.max(0.01, Number(this.cfg.defaults?.musicFadeSec ?? 1.0));
 
+    // WebAudio for SFX
     this._ctx = null;
     this._sfxGain = null;
     this._buffers = new Map();
     this._loopNodes = new Map();
 
+    // HTMLAudio for Music
     this._musicEl = new Audio();
     this._musicEl.loop = true;
     this._musicEl.preload = "auto";
     this._musicEl.crossOrigin = "anonymous";
-    this._musicEl.volume = 0;
+    this._musicEl.volume = 0;      // start silent
+    this._musicEl.muted = false;
     this._musicEl.playsInline = true;
 
     this._musicKey = null;
     this._musicSwapLock = false;
     this._musicToggleLock = false;
 
+    // cancelable fade
     this._fadeToken = 0;
     this._rafId = null;
 
-    this._auto = this.cfg.autoMusic || { enabled: true, slots: [] };
+    // Async start worker lock
+    this._musicStartWorkerId = 0;
+
+    // Auto music
+    this._auto = this.cfg.autoMusic || {
+      enabled: true,
+      slots: [
+        { start: "06:00", key: "lofi_morning" },
+        { start: "10:00", key: "lofi_day" },
+        { start: "17:00", key: "lofi_evening" },
+        { start: "21:00", key: "lofi_night" }
+      ]
+    };
+
+    // Story override
     this._storyMusicOverride = undefined;
+
+    // rain follow cloudProfile overcast
+    this._rainActive = false;
   }
 
   isSfxEnabled(){ return this._sfxEnabled; }
   isMusicEnabled(){ return this._musicEnabled; }
 
-  /* ========================= TOGGLE MUSIC ========================= */
+  /* ---------------- unlock SFX (WebAudio) ---------------- */
+
+  async _ensureSfxUnlocked(){
+    if(this._unlockedSfx) return true;
+
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if(!AudioCtx) {
+      this._unlockedSfx = true;
+      return true;
+    }
+
+    this._ctx = new AudioCtx();
+    this._sfxGain = this._ctx.createGain();
+    this._sfxGain.gain.value = this._sfxEnabled ? this._sfxVol : 0;
+    this._sfxGain.connect(this._ctx.destination);
+
+    if(this._ctx.state === "suspended"){
+      try { await this._ctx.resume(); } catch(_) {}
+    }
+
+    // tiny silent blip
+    try{
+      const buf = this._ctx.createBuffer(1, 1, 22050);
+      const src = this._ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(this._ctx.destination);
+      src.start(0);
+    }catch(_){}
+
+    this._unlockedSfx = true;
+    return true;
+  }
+
+  /* ---------------- unlock MUSIC (HTMLAudio) ---------------- */
+
+  async _ensureMusicUnlocked(){
+    if(this._unlockedMusic) return true;
+    // mark unlocked after first successful play; here we just allow attempts
+    this._unlockedMusic = true;
+    return true;
+  }
+
+  /* ---------------- toggles ---------------- */
+
+  async toggleSfx(){
+    this._sfxEnabled = !this._sfxEnabled;
+
+    if(this._sfxEnabled){
+      await this._ensureSfxUnlocked();
+    }
+    if(this._sfxGain){
+      this._sfxGain.gain.value = this._sfxEnabled ? this._sfxVol : 0;
+    }
+
+    if(!this._sfxEnabled){
+      this.stopLoop("rain_loop");
+    } else {
+      if(this._rainActive) this.playLoop("rain_loop", { fadeSec: 0.6 });
+    }
+
+    return this._sfxEnabled;
+  }
 
   async toggleMusic(){
+    // Prevent re-entry / double tap race
     if(this._musicToggleLock) return this._musicEnabled;
     this._musicToggleLock = true;
 
-    const wantOn = !this._musicEnabled;
-
-    // ---- IMPORTANT CHANGE ----
-    // Commit state immediately for UI responsiveness
-    this._musicEnabled = wantOn;
-
-    if(wantOn){
-      // Start async but DO NOT wait before returning
-      this._startMusicAsync();
-      this._musicToggleLock = false;
-      return true;
-    } else {
-      // Fade down + pause immediately
-      this._stopMusicAsync();
-      this._musicToggleLock = false;
-      return false;
-    }
-  }
-
-  async _startMusicAsync(){
     try{
-      const desired = this._getDesiredMusic(new Date());
-      if(!desired) return;
+      const wantOn = !this._musicEnabled;
 
-      const url = this._musicUrl(desired);
-      if(!url) return;
+      if(wantOn){
+        // ✅ IMPORTANT: update state & return fast for HUD
+        await this._ensureMusicUnlocked();
+        this._musicEnabled = true;
 
-      if(this._musicEl.src !== location.origin + "/" + url){
-        this._musicEl.src = url;
-        this._musicEl.load();
-        await once(this._musicEl, "canplay", 2000);
+        // Start worker (async) but do NOT await => HUD slash disappears instantly
+        this._kickMusicStartWorker({ forcePlay: true });
+
+        return true;
       }
 
-      await this._musicEl.play();
-      this._musicKey = desired;
-
-      await this._fadeMusicTo(this._musicVol, 0.35);
-    }catch(err){
-      console.warn("Music start failed:", err);
-      // revert state if play truly failed
+      // want OFF: commit state first so story engine won't turn it back on
       this._musicEnabled = false;
+
+      // cancel any pending start worker and fades
+      this._musicStartWorkerId++;
+      this._cancelFade();
+
+      // Fade down + PAUSE (real off)
+      await this._fadeMusicTo(0, 0.20);
+      try{ this._musicEl.pause(); }catch(_){}
+      return false;
+
+    } finally {
+      setTimeout(()=>{ this._musicToggleLock = false; }, 220);
     }
   }
 
-  async _stopMusicAsync(){
-    await this._fadeMusicTo(0, 0.25);
-    try{ this._musicEl.pause(); }catch(_){}
+  _kickMusicStartWorker({ forcePlay }){
+    const myId = ++this._musicStartWorkerId;
+
+    // run async without awaiting (UI already updated)
+    (async () => {
+      // if user turned it off in between, stop
+      if(!this._musicEnabled) return;
+      if(myId !== this._musicStartWorkerId) return;
+
+      const ok = await this._applyDesiredMusic(new Date(), { forcePlay: !!forcePlay });
+      if(!ok){
+        // if failed, revert to OFF so next tap is consistent
+        if(myId !== this._musicStartWorkerId) return;
+        this._musicEnabled = false;
+        this._cancelFade();
+        await this._fadeMusicTo(0, 0.10);
+        try{ this._musicEl.pause(); }catch(_){}
+        return;
+      }
+
+      if(!this._musicEnabled) return;
+      if(myId !== this._musicStartWorkerId) return;
+
+      // fade up
+      await this._fadeMusicTo(this._musicVol, 0.30);
+    })().catch(()=>{});
   }
 
-  /* ========================= FADE ========================= */
+  /* ---------------- URL helpers ---------------- */
+
+  _sfxUrl(key){
+    const file = this.cfg.sfx?.[key];
+    if(!file) return null;
+    return this.paths.sfxBase + file;
+  }
+
+  _musicUrl(key){
+    const file = this.cfg.music?.[key];
+    if(!file) return null;
+    return this.paths.musicBase + file;
+  }
+
+  _timeToMin(hhmm){
+    const [h,m] = String(hhmm).split(":").map(n=>parseInt(n,10));
+    return (h*60)+(m||0);
+  }
+
+  _autoKeyForTime(now){
+    const slots = (this._auto?.slots || []).slice().map(s=>({
+      startMin: this._timeToMin(s.start),
+      key: s.key
+    })).sort((a,b)=>a.startMin-b.startMin);
+
+    if(!slots.length) return null;
+
+    const t = now.getHours()*60 + now.getMinutes();
+    let pick = slots[0];
+    for(const s of slots){
+      if(t >= s.startMin) pick = s;
+    }
+    return pick.key;
+  }
+
+  /* ---------------- SFX ---------------- */
+
+  async _loadBuffer(cacheKey, url){
+    if(this._buffers.has(cacheKey)) return this._buffers.get(cacheKey);
+
+    try{
+      const res = await fetch(url, { cache: "force-cache" });
+      if(!res.ok) return null;
+      const arr = await res.arrayBuffer();
+      const buf = await this._ctx.decodeAudioData(arr);
+      this._buffers.set(cacheKey, buf);
+      return buf;
+    }catch(_){
+      return null;
+    }
+  }
+
+  async playSfx(key, { volume=1.0 } = {}){
+    if(!this._sfxEnabled) return;
+    if(!this._unlockedSfx) return;
+    if(!this._ctx || !this._sfxGain) return;
+
+    const url = this._sfxUrl(key);
+    if(!url) return;
+
+    const buf = await this._loadBuffer(key, url);
+    if(!buf) return;
+
+    const src = this._ctx.createBufferSource();
+    src.buffer = buf;
+
+    const g = this._ctx.createGain();
+    g.gain.value = clamp01(volume);
+
+    src.connect(g);
+    g.connect(this._sfxGain);
+    src.start(0);
+  }
+
+  async playLoop(key, { volume=1.0, fadeSec=0.6 } = {}){
+    if(!this._sfxEnabled) return;
+    if(!this._unlockedSfx) return;
+    if(!this._ctx || !this._sfxGain) return;
+    if(this._loopNodes.has(key)) return;
+
+    const url = this._sfxUrl(key);
+    if(!url) return;
+
+    const buf = await this._loadBuffer(key, url);
+    if(!buf) return;
+
+    const src = this._ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+
+    const g = this._ctx.createGain();
+    g.gain.value = 0;
+
+    src.connect(g);
+    g.connect(this._sfxGain);
+    src.start(0);
+
+    this._loopNodes.set(key, { src, gain: g });
+
+    const target = clamp01(volume);
+    const now = this._ctx.currentTime;
+    g.gain.cancelScheduledValues(now);
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(target, now + Math.max(0.01, fadeSec));
+  }
+
+  stopLoop(key, { fadeSec=0.4 } = {}){
+    if(!this._ctx){
+      this._loopNodes.delete(key);
+      return;
+    }
+    const node = this._loopNodes.get(key);
+    if(!node) return;
+
+    const now = this._ctx.currentTime;
+    const g = node.gain;
+    const dur = Math.max(0.01, fadeSec);
+
+    g.gain.cancelScheduledValues(now);
+    g.gain.setValueAtTime(g.gain.value, now);
+    g.gain.linearRampToValueAtTime(0, now + dur);
+
+    setTimeout(()=>{
+      try{ node.src.stop(); }catch(_){}
+      try{ node.src.disconnect(); }catch(_){}
+      try{ node.gain.disconnect(); }catch(_){}
+      this._loopNodes.delete(key);
+    }, (dur*1000)+120);
+  }
+
+  /* ---------------- MUSIC (HTMLAudio) ---------------- */
+
+  _cancelFade(){
+    this._fadeToken++;
+    if(this._rafId){
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
+    }
+  }
 
   _fadeMusicTo(target, sec){
     const endVol = clamp01(target);
     const startVol = this._musicEl.volume;
     const durMs = Math.max(10, sec*1000);
     const t0 = performance.now();
-    const token = ++this._fadeToken;
+    const myToken = ++this._fadeToken;
 
     if(this._rafId){
       cancelAnimationFrame(this._rafId);
@@ -143,7 +381,7 @@ export class AudioManager {
 
     return new Promise((resolve)=>{
       const step = (t)=>{
-        if(token !== this._fadeToken) return resolve();
+        if(myToken !== this._fadeToken) return resolve(); // cancelled
         const k = Math.min(1, (t - t0) / durMs);
         this._musicEl.volume = startVol + (endVol - startVol) * k;
         if(k >= 1){
@@ -156,30 +394,104 @@ export class AudioManager {
     });
   }
 
-  /* ========================= AUTO MUSIC ========================= */
+  async _ensureMusicPlaying(url){
+    const same = this._musicEl.src && this._musicEl.src.includes(url);
 
-  _getDesiredMusic(now){
-    if(typeof this._storyMusicOverride === "string"){
-      return this._storyMusicOverride;
+    if(this._musicSwapLock) return true;
+    this._musicSwapLock = true;
+
+    try{
+      // During swap: cancel fades, set volume 0, pause briefly
+      this._cancelFade();
+      this._musicEl.volume = 0;
+      try{ this._musicEl.pause(); }catch(_){}
+
+      if(!same){
+        this._musicEl.src = url;
+        this._musicEl.loop = true;
+        this._musicEl.preload = "auto";
+        try{ this._musicEl.load(); }catch(_){}
+        await once(this._musicEl, "canplay", 2200);
+      }
+
+      try{
+        const p = this._musicEl.play();
+        if(p && typeof p.then === "function") await p;
+      }catch(_){
+        return false;
+      }
+
+      await once(this._musicEl, "playing", 1200);
+      return true;
+    } finally {
+      this._musicSwapLock = false;
     }
-    if(!this._auto?.enabled) return null;
-
-    const slots = (this._auto.slots || []).slice();
-    if(!slots.length) return null;
-
-    const t = now.getHours()*60 + now.getMinutes();
-    let pick = slots[0];
-    for(const s of slots){
-      const [h,m] = s.start.split(":").map(Number);
-      const min = h*60 + m;
-      if(t >= min) pick = s;
-    }
-    return pick.key;
   }
 
-  _musicUrl(key){
-    const file = this.cfg.music?.[key];
-    if(!file) return null;
-    return this.paths.musicBase + file;
+  async playMusic(key){
+    const url = this._musicUrl(key);
+    if(!url) return false;
+
+    const ok = await this._ensureMusicPlaying(url);
+    if(!ok) return false;
+
+    this._musicKey = key;
+    return true;
+  }
+
+  /* ---------------- STORY + AUTO ---------------- */
+
+  async applyStoryState(now, state){
+    // Rain audio follows cloudProfile overcast
+    const profile = state?.cloudProfile || "none";
+    const shouldRain = (profile === "overcast");
+
+    if(shouldRain !== this._rainActive){
+      this._rainActive = shouldRain;
+      if(this._sfxEnabled && this._unlockedSfx){
+        if(shouldRain) this.playLoop("rain_loop", { fadeSec: 1.0 });
+        else this.stopLoop("rain_loop", { fadeSec: 1.0 });
+      }
+    }
+
+    // Music override
+    const musicTrack = state?.audio?.musicTrack;
+    if(typeof musicTrack !== "undefined"){
+      this._storyMusicOverride = musicTrack; // string or null
+    }
+
+    // Only act if user enabled music
+    if(this._musicEnabled){
+      // do not await heavy fade; just ensure running
+      this._kickMusicStartWorker({ forcePlay: false });
+    }
+  }
+
+  async _applyDesiredMusic(now, { forcePlay=false } = {}){
+    let desired = null;
+
+    if(typeof this._storyMusicOverride === "string"){
+      desired = this._storyMusicOverride;
+    } else {
+      if(this._auto?.enabled === false) desired = null;
+      else desired = this._autoKeyForTime(now);
+    }
+
+    if(!desired){
+      // no desired: fade out + pause
+      this._cancelFade();
+      await this._fadeMusicTo(0, 0.20);
+      try{ this._musicEl.pause(); }catch(_){}
+      this._musicKey = null;
+      return true;
+    }
+
+    if(forcePlay || desired !== this._musicKey){
+      const ok = await this.playMusic(desired);
+      if(!ok) return false;
+      return true;
+    }
+
+    return true;
   }
 }
