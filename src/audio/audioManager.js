@@ -1,11 +1,15 @@
 // src/audio/audioManager.js
 // SFX: WebAudio ✅
 // MUSIC: HTMLAudio ✅
-// Fixes:
-// - When turning ON music: return TRUE immediately so HUD slash updates instantly
-// - Actual playback starts async (still within same user gesture tick)
-// - OFF still fades to 0 and pauses (true off)
-// - Cancelable fade to prevent collisions
+// Features:
+// - Music toggle ON returns immediately for instant HUD slash update
+// - OFF fades down + pauses (true off)
+// - Cancelable fades (no fade collisions)
+// - NEW: autoMusic slots support multiple tracks per time slot
+//   - slot can be { start:"06:00", key:"lofi_morning" } (old)
+//   - or       { start:"06:00", keys:["m1","m2","m3"] } (new)
+// - When turning music ON: pick random track immediately (async start), NOT repeating last track in that slot
+// - When a track ends: auto-pick next random track in same slot (no immediate repeats)
 
 function clamp01(x){ return Math.max(0, Math.min(1, x)); }
 
@@ -61,10 +65,10 @@ export class AudioManager {
 
     // HTMLAudio for Music
     this._musicEl = new Audio();
-    this._musicEl.loop = true;
+    this._musicEl.loop = false;       // we'll manage looping ourselves (needed for playlists)
     this._musicEl.preload = "auto";
     this._musicEl.crossOrigin = "anonymous";
-    this._musicEl.volume = 0;      // start silent
+    this._musicEl.volume = 0;         // start silent
     this._musicEl.muted = false;
     this._musicEl.playsInline = true;
 
@@ -90,11 +94,21 @@ export class AudioManager {
       ]
     };
 
+    // Track which slot is currently active (by start time string)
+    this._activeSlotId = null;
+
+    // Remember last played track per slot (to avoid repeats)
+    this._lastTrackBySlot = new Map(); // slotId -> key
+
     // Story override
     this._storyMusicOverride = undefined;
 
     // rain follow cloudProfile overcast
     this._rainActive = false;
+
+    // bind ended handler (kept stable)
+    this._onMusicEnded = this._onMusicEnded.bind(this);
+    this._musicEl.addEventListener("ended", this._onMusicEnded);
   }
 
   isSfxEnabled(){ return this._sfxEnabled; }
@@ -172,13 +186,12 @@ export class AudioManager {
       const wantOn = !this._musicEnabled;
 
       if(wantOn){
-        // ✅ IMPORTANT: update state & return fast for HUD
+        // ✅ UI instant
         await this._ensureMusicUnlocked();
         this._musicEnabled = true;
 
-        // Start worker (async) but do NOT await => HUD slash disappears instantly
+        // Kick async start (random now, no repeat)
         this._kickMusicStartWorker({ forcePlay: true });
-
         return true;
       }
 
@@ -202,15 +215,12 @@ export class AudioManager {
   _kickMusicStartWorker({ forcePlay }){
     const myId = ++this._musicStartWorkerId;
 
-    // run async without awaiting (UI already updated)
     (async () => {
-      // if user turned it off in between, stop
       if(!this._musicEnabled) return;
       if(myId !== this._musicStartWorkerId) return;
 
       const ok = await this._applyDesiredMusic(new Date(), { forcePlay: !!forcePlay });
       if(!ok){
-        // if failed, revert to OFF so next tap is consistent
         if(myId !== this._musicStartWorkerId) return;
         this._musicEnabled = false;
         this._cancelFade();
@@ -222,7 +232,6 @@ export class AudioManager {
       if(!this._musicEnabled) return;
       if(myId !== this._musicStartWorkerId) return;
 
-      // fade up
       await this._fadeMusicTo(this._musicVol, 0.30);
     })().catch(()=>{});
   }
@@ -246,11 +255,16 @@ export class AudioManager {
     return (h*60)+(m||0);
   }
 
-  _autoKeyForTime(now){
-    const slots = (this._auto?.slots || []).slice().map(s=>({
-      startMin: this._timeToMin(s.start),
-      key: s.key
-    })).sort((a,b)=>a.startMin-b.startMin);
+  _getActiveSlot(now){
+    const slots = (this._auto?.slots || []).slice().map(s => {
+      const start = s.start ?? "00:00";
+      return {
+        start,
+        startMin: this._timeToMin(start),
+        key: s.key,
+        keys: Array.isArray(s.keys) ? s.keys.slice() : null
+      };
+    }).sort((a,b)=>a.startMin-b.startMin);
 
     if(!slots.length) return null;
 
@@ -259,7 +273,22 @@ export class AudioManager {
     for(const s of slots){
       if(t >= s.startMin) pick = s;
     }
-    return pick.key;
+    return pick;
+  }
+
+  _pickRandomNoRepeat(list, last){
+    if(!Array.isArray(list) || list.length === 0) return null;
+    if(list.length === 1) return list[0];
+
+    // try a few times to avoid repeat
+    for(let i=0;i<6;i++){
+      const k = list[Math.floor(Math.random()*list.length)];
+      if(k !== last) return k;
+    }
+    // fallback
+    let idx = list.indexOf(last);
+    if(idx < 0) idx = 0;
+    return list[(idx + 1) % list.length];
   }
 
   /* ---------------- SFX ---------------- */
@@ -408,7 +437,7 @@ export class AudioManager {
 
       if(!same){
         this._musicEl.src = url;
-        this._musicEl.loop = true;
+        this._musicEl.loop = false; // IMPORTANT for playlists & ended event
         this._musicEl.preload = "auto";
         try{ this._musicEl.load(); }catch(_){}
         await once(this._musicEl, "canplay", 2200);
@@ -439,6 +468,50 @@ export class AudioManager {
     return true;
   }
 
+  async _onMusicEnded(){
+    // Only auto-advance if music is enabled and we're in auto slot playlist mode
+    if(!this._musicEnabled) return;
+
+    // If story override is forcing a single track, we just restart it
+    if(typeof this._storyMusicOverride === "string"){
+      // restart same forced track
+      if(this._musicKey){
+        try{
+          this._musicEl.currentTime = 0;
+          const p = this._musicEl.play();
+          if(p && typeof p.then === "function") await p;
+        }catch(_){}
+      }
+      return;
+    }
+
+    // If auto disabled, do nothing
+    if(this._auto?.enabled === false) return;
+
+    const now = new Date();
+    const slot = this._getActiveSlot(now);
+    if(!slot) return;
+
+    // If slot changed while track was playing, just apply desired
+    if(slot.start !== this._activeSlotId){
+      this._kickMusicStartWorker({ forcePlay: true });
+      return;
+    }
+
+    // pick next in same slot (no repeat)
+    const list = Array.isArray(slot.keys) ? slot.keys : (slot.key ? [slot.key] : []);
+    if(!list.length) return;
+
+    const last = this._lastTrackBySlot.get(slot.start) || null;
+    const nextKey = this._pickRandomNoRepeat(list, last) || list[0];
+
+    this._lastTrackBySlot.set(slot.start, nextKey);
+    this._musicKey = nextKey;
+
+    // soft swap without killing UI
+    this._kickMusicStartWorker({ forcePlay: true });
+  }
+
   /* ---------------- STORY + AUTO ---------------- */
 
   async applyStoryState(now, state){
@@ -462,22 +535,45 @@ export class AudioManager {
 
     // Only act if user enabled music
     if(this._musicEnabled){
-      // do not await heavy fade; just ensure running
       this._kickMusicStartWorker({ forcePlay: false });
     }
   }
 
   async _applyDesiredMusic(now, { forcePlay=false } = {}){
-    let desired = null;
+    let desiredKey = null;
 
+    // Story override: forced single track
     if(typeof this._storyMusicOverride === "string"){
-      desired = this._storyMusicOverride;
+      desiredKey = this._storyMusicOverride;
+      this._activeSlotId = null;
     } else {
-      if(this._auto?.enabled === false) desired = null;
-      else desired = this._autoKeyForTime(now);
+      // auto
+      if(this._auto?.enabled === false){
+        desiredKey = null;
+        this._activeSlotId = null;
+      } else {
+        const slot = this._getActiveSlot(now);
+        if(!slot){
+          desiredKey = null;
+          this._activeSlotId = null;
+        } else {
+          const slotId = slot.start;
+          this._activeSlotId = slotId;
+
+          const list = Array.isArray(slot.keys) ? slot.keys : (slot.key ? [slot.key] : []);
+          if(!list.length){
+            desiredKey = null;
+          } else {
+            // IMPORTANT: random on enable / when slot changes / when forced
+            const last = this._lastTrackBySlot.get(slotId) || null;
+            desiredKey = this._pickRandomNoRepeat(list, last) || list[0];
+            this._lastTrackBySlot.set(slotId, desiredKey);
+          }
+        }
+      }
     }
 
-    if(!desired){
+    if(!desiredKey){
       // no desired: fade out + pause
       this._cancelFade();
       await this._fadeMusicTo(0, 0.20);
@@ -486,12 +582,14 @@ export class AudioManager {
       return true;
     }
 
-    if(forcePlay || desired !== this._musicKey){
-      const ok = await this.playMusic(desired);
+    // Change track if needed (or if forcing play)
+    if(forcePlay || desiredKey !== this._musicKey){
+      const ok = await this.playMusic(desiredKey);
       if(!ok) return false;
       return true;
     }
 
+    // Same track continues
     return true;
   }
 }
