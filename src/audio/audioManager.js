@@ -1,8 +1,11 @@
 // src/audio/audioManager.js
-// Best practical iOS behavior:
-// - SFX: WebAudio (fast, overlaps, loops) ✅
-// - MUSIC: HTMLAudio keep-alive (never pause on toggle; just fade volume) ✅
-//   => avoids stutter + avoids re-buffer/decode every toggle
+// SFX: WebAudio ✅
+// MUSIC: HTMLAudio ✅ (fast resume, no rebuffer loops)
+// Fixes:
+// - UI slash needs 2 taps (toggle state drift) -> return actual new state only
+// - "OFF but still plays" -> fade to 0 then PAUSE
+// - fade collisions -> cancel token for volume fades
+// - prevent re-entry -> lock
 
 function clamp01(x){ return Math.max(0, Math.min(1, x)); }
 
@@ -37,7 +40,7 @@ export class AudioManager {
       musicBase:this.cfg.musicBasePath|| "assets/audio/music/"
     };
 
-    // enabled flags
+    // enabled flags (truth for UI)
     this._sfxEnabled = false;
     this._musicEnabled = false;
 
@@ -56,7 +59,7 @@ export class AudioManager {
     this._buffers = new Map();
     this._loopNodes = new Map();
 
-    // HTMLAudio for Music (keep-alive)
+    // HTMLAudio for Music
     this._musicEl = new Audio();
     this._musicEl.loop = true;
     this._musicEl.preload = "auto";
@@ -66,11 +69,14 @@ export class AudioManager {
     this._musicEl.playsInline = true;
 
     this._musicKey = null;
-    this._musicIsPlaying = false;  // actual play state
-    this._musicToggleLock = false;
     this._musicSwapLock = false;
+    this._musicToggleLock = false;
 
-    // Auto music table
+    // cancelable fade
+    this._fadeToken = 0;
+    this._rafId = null;
+
+    // Auto music
     this._auto = this.cfg.autoMusic || {
       enabled: true,
       slots: [
@@ -84,7 +90,7 @@ export class AudioManager {
     // Story override
     this._storyMusicOverride = undefined;
 
-    // rain follow cloudProfile overcast
+    // rain follow cloudProfile
     this._rainActive = false;
   }
 
@@ -128,9 +134,7 @@ export class AudioManager {
 
   async _ensureMusicUnlocked(){
     if(this._unlockedMusic) return true;
-
-    // Needs user gesture. We'll mark unlocked after first successful play().
-    // (We don't play here unless we already have a track set.)
+    // We mark unlocked after first successful play()
     this._unlockedMusic = true;
     return true;
   }
@@ -157,30 +161,38 @@ export class AudioManager {
   }
 
   async toggleMusic(){
+    // Prevent re-entry / double tap race
     if(this._musicToggleLock) return this._musicEnabled;
     this._musicToggleLock = true;
 
     try{
-      const next = !this._musicEnabled;
-      this._musicEnabled = next;
+      const wantOn = !this._musicEnabled;
 
-      if(next){
+      if(wantOn){
         await this._ensureMusicUnlocked();
+
+        // Start desired track first; only then commit UI state = ON
         const ok = await this._applyDesiredMusic(new Date(), { forcePlay: true });
         if(!ok){
-          // failed to start -> revert so HUD slash stays honest
+          // stay OFF if couldn't start
           this._musicEnabled = false;
-          await this._fadeMusicTo(0, 0.15);
           return false;
         }
-        // enabled and playing silently already; now fade up
+
+        this._musicEnabled = true;
+        // Fade up (cancel old fades)
         await this._fadeMusicTo(this._musicVol, 0.35);
         return true;
-      } else {
-        // IMPORTANT: keep-alive: do NOT pause, just fade to 0
-        await this._fadeMusicTo(0, 0.25);
-        return false;
       }
+
+      // want OFF: commit state first so story engine won't turn it back on
+      this._musicEnabled = false;
+
+      // Fade down + PAUSE (real off)
+      await this._fadeMusicTo(0, 0.25);
+      try{ this._musicEl.pause(); }catch(_){}
+      return false;
+
     } finally {
       setTimeout(()=>{ this._musicToggleLock = false; }, 350);
     }
@@ -316,48 +328,66 @@ export class AudioManager {
     }, (dur*1000)+120);
   }
 
-  /* ---------------- MUSIC (keep-alive HTMLAudio) ---------------- */
+  /* ---------------- MUSIC (HTMLAudio) ---------------- */
 
-  async _fadeMusicTo(target, sec){
+  _cancelFade(){
+    this._fadeToken++;
+    if(this._rafId){
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
+    }
+  }
+
+  _fadeMusicTo(target, sec){
     const endVol = clamp01(target);
     const startVol = this._musicEl.volume;
     const durMs = Math.max(10, sec*1000);
     const t0 = performance.now();
+    const myToken = ++this._fadeToken;
+
+    // kill old rAF
+    if(this._rafId){
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
+    }
 
     return new Promise((resolve)=>{
       const step = (t)=>{
+        if(myToken !== this._fadeToken) return resolve(); // cancelled
         const k = Math.min(1, (t - t0) / durMs);
         this._musicEl.volume = startVol + (endVol - startVol) * k;
-        if(k >= 1) return resolve();
-        requestAnimationFrame(step);
+        if(k >= 1){
+          this._rafId = null;
+          return resolve();
+        }
+        this._rafId = requestAnimationFrame(step);
       };
-      requestAnimationFrame(step);
+      this._rafId = requestAnimationFrame(step);
     });
   }
 
   async _ensureMusicPlaying(url){
-    // Already playing this track
-    if(this._musicIsPlaying && this._musicEl.src && this._musicEl.src.includes(url)) return true;
+    // already correct src loaded?
+    const same = this._musicEl.src && this._musicEl.src.includes(url);
 
-    // Prevent concurrent swaps
     if(this._musicSwapLock) return true;
     this._musicSwapLock = true;
 
     try{
-      // If currently playing something else: fade down first but keep alive
-      await this._fadeMusicTo(0, 0.20);
+      // During swap: fade down and pause (safe)
+      await this._fadeMusicTo(0, 0.15);
+      try{ this._musicEl.pause(); }catch(_){}
 
-      // swap src
-      this._musicEl.pause(); // pause only during swap (short), then play again
-      this._musicEl.src = url;
-      this._musicEl.loop = true;
-      this._musicEl.preload = "auto";
-      this._musicEl.volume = 0;
+      if(!same){
+        this._musicEl.src = url;
+        this._musicEl.loop = true;
+        this._musicEl.preload = "auto";
+        this._musicEl.volume = 0;
+        try{ this._musicEl.load(); }catch(_){}
+        await once(this._musicEl, "canplay", 2200);
+      }
 
-      try{ this._musicEl.load(); }catch(_){}
-
-      await once(this._musicEl, "canplay", 2200);
-
+      // play
       try{
         const p = this._musicEl.play();
         if(p && typeof p.then === "function") await p;
@@ -366,8 +396,6 @@ export class AudioManager {
       }
 
       await once(this._musicEl, "playing", 1200);
-
-      this._musicIsPlaying = true;
       return true;
     } finally {
       this._musicSwapLock = false;
@@ -375,8 +403,6 @@ export class AudioManager {
   }
 
   async playMusic(key){
-    if(!this._musicEnabled) return false;
-
     const url = this._musicUrl(key);
     if(!url) return false;
 
@@ -384,19 +410,6 @@ export class AudioManager {
     if(!ok) return false;
 
     this._musicKey = key;
-
-    // If enabled, we fade up elsewhere; but safe guard:
-    if(this._musicEnabled && this._musicEl.volume < this._musicVol*0.5){
-      await this._fadeMusicTo(this._musicVol, 0.35);
-    }
-
-    return true;
-  }
-
-  async stopMusic(){
-    // keep-alive: never fully stop unless you really want to
-    await this._fadeMusicTo(0, 0.25);
-    this._musicKey = null;
     return true;
   }
 
@@ -421,7 +434,7 @@ export class AudioManager {
       this._storyMusicOverride = musicTrack; // string or null
     }
 
-    // Apply desired music (only if enabled)
+    // Only act if user enabled music
     if(this._musicEnabled){
       await this._applyDesiredMusic(now, { forcePlay: false });
     }
@@ -438,17 +451,26 @@ export class AudioManager {
     }
 
     if(!desired){
-      await this.stopMusic();
+      // no desired track: fade out + pause
+      await this._fadeMusicTo(0, 0.25);
+      try{ this._musicEl.pause(); }catch(_){}
+      this._musicKey = null;
       return true;
     }
 
+    // change track if needed
     if(forcePlay || desired !== this._musicKey){
       const ok = await this.playMusic(desired);
       if(!ok) return false;
-
-      // fade target based on enabled state
-      if(this._musicEnabled) await this._fadeMusicTo(this._musicVol, this._musicFadeSec);
+      // NOTE: fade up happens in toggleMusic(), and also here if already enabled
+      await this._fadeMusicTo(this._musicVol, this._musicFadeSec);
       return true;
+    }
+
+    // ensure volume (if some fade cancelled)
+    if(this._musicEnabled && this._musicEl.volume < this._musicVol * 0.8){
+      this._cancelFade();
+      this._musicEl.volume = this._musicVol;
     }
 
     return true;
